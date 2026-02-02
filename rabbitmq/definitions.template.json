@@ -1,0 +1,70 @@
+{
+  "users": [
+    {"name": "admin", "password": "$ADMIN", "tags": "administrator"},
+    {"name": "monitoring", "password": "$MONITORING", "tags": "monitoring"},
+    {"name": "stream_game", "password": "$STREAM_GAME", "tags": ""},
+    {"name": "validation_worker", "password": "$VALIDATION_WORKER", "tags": ""},
+    {"name": "mc_gateway", "password": "$MC_GATEWAY", "tags": ""}
+  ],
+
+  "vhosts": [
+    { "name": "/stream-game" },
+    { "name": "/validation" },
+    { "name": "/mc-gateway" }
+  ],
+
+  "permissions": [
+    { "user": "admin", "vhost": "/mc-gateway", "configure": ".*", "write": ".*", "read": ".*" },
+    { "user": "admin", "vhost": "/stream-game", "configure": ".*", "write": ".*", "read": ".*" },
+    { "user": "admin", "vhost": "/validation", "configure": ".*", "write": ".*", "read": ".*" },
+    { "user": "monitoring", "vhost": "/mc-gateway", "configure": "^$", "write": "^$", "read": ".*" },
+    { "user": "monitoring", "vhost": "/stream-game", "configure": "^$", "write": "^$", "read": ".*" },
+    { "user": "monitoring", "vhost": "/validation", "configure": "^$", "write": "^$", "read": ".*" },
+    { "user": "stream_game", "vhost": "/stream-game", "configure": "^$", "write": "^stream\\.game\\.", "read": "^stream\\.game\\." },
+    { "user": "validation_worker", "vhost": "/validation", "configure": "^$", "write": "^validation\\.", "read": "^validation\\." },
+    { "user": "mc_gateway", "vhost": "/mc-gateway", "configure": "^$", "write": "^mc\\.gateway\\.", "read": "^mc\\.gateway\\." }
+  ],
+
+  "queues": [
+    {
+      "name": "stream.game.events",
+      "vhost": "/stream-game",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-max-length": 100000,
+        "x-overflow": "reject-publish"
+      }
+    },
+    {
+      "name": "validation.tasks",
+      "vhost": "/validation",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-max-length": 50000,
+        "x-overflow": "reject-publish"
+      }
+    },
+    {
+      "name": "validation.results",
+      "vhost": "/validation",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-max-length": 50000,
+        "x-overflow": "reject-publish"
+      }
+    },
+    {
+      "name": "mc.gateway.commands",
+      "vhost": "/mc-gateway",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-max-length": 100000,
+        "x-overflow": "reject-publish"
+      }
+    }
+  ]
+} 

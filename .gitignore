@@ -1,0 +1,6 @@
+.env
+
+data/
+logs/
+
+rabbitmq/definitions.json
