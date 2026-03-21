@@ -1,4 +1,4 @@
-.PHONY: help init generate-config start stop restart destroy wipe logs status health shell plugins enable-plugin
+.PHONY: help init generate-config start stop restart destroy wipe logs status health shell plugins enable-plugin backup-definitions validate-json test-connection check-env
 
 # -----------------------------
 # Help
@@ -19,6 +19,10 @@ help:
 	@echo "  make shell            - Open shell inside RabbitMQ container"
 	@echo "  make plugins          - List all available plugins"
 	@echo "  make enable-plugin NAME=<plugin> - Enable a specific plugin"
+	@echo "  make backup-definitions - Export current definitions to backup file"
+	@echo "  make validate-json    - Validate definitions.json syntax"
+	@echo "  make test-connection  - Test AMQP connection to RabbitMQ"
+	@echo "  make check-env        - Check if .env is properly configured"
 	@echo ""
 
 # -----------------------------
@@ -33,9 +37,36 @@ init:
 	fi
 
 # -----------------------------
+# Environment validation
+# -----------------------------
+check-env: init
+	@echo "Checking .env configuration..."
+	@ERRORS=0; \
+	while IFS='=' read -r key value; do \
+		case "$$key" in \
+			""|\#*) continue ;; \
+			ADMIN|MONITORING|STREAM_GAME|VALIDATION_WORKER|MC_GATEWAY) \
+				if [ "$$value" = "change_me" ] || [ -z "$$value" ]; then \
+					echo "⚠ Warning: $$key has default or empty value"; \
+					ERRORS=1; \
+				fi ;; \
+			RABBITMQ_ERLANG_COOKIE) \
+				if [ "$$value" = "change_me_supersecret_cookie" ] || [ -z "$$value" ]; then \
+					echo "⚠ Warning: $$key has default or empty value"; \
+					ERRORS=1; \
+				fi ;; \
+		esac; \
+	done < .env; \
+	if [ $$ERRORS -eq 1 ]; then \
+		echo "⚠ Please update .env with secure values before production use."; \
+	else \
+		echo "✓ .env looks good."; \
+	fi
+
+# -----------------------------
 # Config generation
 # -----------------------------
-generate-config: init
+generate-config: check-env
 	@echo "Generating definitions.json from template"
 	@set -a; . ./.env; set +a; \
 	envsubst < rabbitmq/definitions.template.json > rabbitmq/definitions.json
@@ -92,3 +123,31 @@ ifndef NAME
 endif
 	docker exec rabbitmq rabbitmq-plugins enable $(NAME)
 	@echo "Plugin '$(NAME)' enabled. Restart may be required."
+
+# -----------------------------
+# Backup & Validation
+# -----------------------------
+backup-definitions:
+	@echo "Exporting current definitions to backup..."
+	@mkdir -p backups
+	@docker exec rabbitmq rabbitmqctl export_definitions /tmp/definitions_backup.json 2>/dev/null || \
+		(echo "Note: export_definitions requires rabbitmq_management plugin" && exit 1)
+	@docker cp rabbitmq:/tmp/definitions_backup.json backups/definitions-$$(date +%Y%m%d-%H%M%S).json
+	@echo "Backup saved to backups/"
+
+validate-json:
+	@echo "Validating definitions.template.json syntax..."
+	@python3 -c "import json; json.load(open('rabbitmq/definitions.template.json'))" && \
+		echo "✓ definitions.template.json is valid JSON" || \
+		(echo "✗ Invalid JSON in definitions.template.json" && exit 1)
+	@if [ -f rabbitmq/definitions.json ]; then \
+		python3 -c "import json; json.load(open('rabbitmq/definitions.json'))" && \
+		echo "✓ definitions.json is valid JSON" || \
+		(echo "✗ Invalid JSON in definitions.json" && exit 1); \
+	fi
+
+test-connection:
+	@echo "Testing AMQP connection to RabbitMQ..."
+	@docker exec rabbitmq rabbitmq-diagnostics -q check_port_connectivity || \
+		(echo "✗ Cannot connect to RabbitMQ on port 5672" && exit 1)
+	@echo "✓ Successfully connected to RabbitMQ"
