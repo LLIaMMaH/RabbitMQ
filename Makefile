@@ -1,4 +1,4 @@
-.PHONY: help init generate-config start stop restart destroy wipe logs status health shell plugins enable-plugin backup-definitions validate-json test-connection check-env
+.PHONY: help init generate-config up down restart destroy wipe logs status health shell plugins enable-plugin backup-definitions validate-json test-connection check-env start stop
 
 # -----------------------------
 # Help
@@ -6,23 +6,29 @@
 help:
 	@echo "RabbitMQ management commands:"
 	@echo ""
+	@echo "Basic:"
 	@echo "  make init             - Prepare .env from template (one-time)"
-	@echo "  make generate-config  - Generate definitions.json from template"
-	@echo "  make start            - Start RabbitMQ (uses existing configs)"
-	@echo "  make stop             - Stop RabbitMQ containers (data preserved)"
+	@echo "  make up               - Start RabbitMQ (uses existing configs)"
+	@echo "  make down             - Stop RabbitMQ containers (data preserved)"
 	@echo "  make restart          - Restart RabbitMQ"
 	@echo "  make destroy          - Stop containers and remove Docker volumes"
-	@echo "  make wipe             - REMOVE local data/logs directories (DANGEROUS)"
+	@echo ""
+	@echo "Diagnostics:"
 	@echo "  make logs             - Follow RabbitMQ logs"
 	@echo "  make status           - Show container status"
 	@echo "  make health           - Check RabbitMQ health status"
 	@echo "  make shell            - Open shell inside RabbitMQ container"
 	@echo "  make plugins          - List all available plugins"
-	@echo "  make enable-plugin NAME=<plugin> - Enable a specific plugin"
-	@echo "  make backup-definitions - Export current definitions to backup file"
+	@echo "  make enable-plugin    - Enable a specific plugin (NAME=<plugin>)"
+	@echo ""
+	@echo "Validation & Backup:"
+	@echo "  make check-env        - Check if .env is properly configured"
 	@echo "  make validate-json    - Validate definitions.json syntax"
 	@echo "  make test-connection  - Test AMQP connection to RabbitMQ"
-	@echo "  make check-env        - Check if .env is properly configured"
+	@echo "  make backup-definitions - Export current definitions to backup"
+	@echo ""
+	@echo "Dangerous:"
+	@echo "  make wipe             - REMOVE local data/logs directories"
 	@echo ""
 
 # -----------------------------
@@ -74,13 +80,13 @@ generate-config: check-env
 # -----------------------------
 # Lifecycle
 # -----------------------------
-start: generate-config
+up: generate-config
 	docker compose up -d
 	@echo "RabbitMQ started"
 	@echo "Management UI: http://localhost:15672"
 	@echo "User: admin (password from .env)"
 
-stop:
+down:
 	docker compose down
 
 restart:
@@ -88,6 +94,10 @@ restart:
 
 destroy:
 	docker compose down -v
+
+# Алиасы для совместимости
+start: up
+stop: down
 
 # -----------------------------
 # Dangerous operations
