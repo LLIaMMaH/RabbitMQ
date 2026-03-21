@@ -28,6 +28,36 @@
     {"user": "mc_gateway", "vhost": "/mc-gateway", "configure": "^mc\\.(gateway|commands|server|retry|dlx)\\.*", "write": "^(amq\\.default|mc\\.(gateway|commands|server|retry|dlx))$", "read": "^mc\\.(gateway|commands|server|retry|dlx)\\.*" }
   ],
 
+  "exchanges": [
+    {
+      "name": "dlx",
+      "vhost": "/stream-game",
+      "type": "direct",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "dlx",
+      "vhost": "/validation",
+      "type": "direct",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "dlx",
+      "vhost": "/mc-gateway",
+      "type": "direct",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    }
+  ],
+
   "queues": [
     {
       "name": "stream.game.events",
@@ -36,7 +66,8 @@
       "auto_delete": false,
       "arguments": {
         "x-max-length": 100000,
-        "x-overflow": "reject-publish"
+        "x-overflow": "reject-publish",
+        "x-dead-letter-exchange": "dlx"
       }
     },
     {
@@ -46,7 +77,8 @@
       "auto_delete": false,
       "arguments": {
         "x-max-length": 50000,
-        "x-overflow": "reject-publish"
+        "x-overflow": "reject-publish",
+        "x-dead-letter-exchange": "dlx"
       }
     },
     {
@@ -56,7 +88,8 @@
       "auto_delete": false,
       "arguments": {
         "x-max-length": 50000,
-        "x-overflow": "reject-publish"
+        "x-overflow": "reject-publish",
+        "x-dead-letter-exchange": "dlx"
       }
     },
     {
@@ -66,8 +99,57 @@
       "auto_delete": false,
       "arguments": {
         "x-max-length": 100000,
-        "x-overflow": "reject-publish"
+        "x-overflow": "reject-publish",
+        "x-dead-letter-exchange": "dlx"
       }
+    },
+    {
+      "name": "dlq",
+      "vhost": "/stream-game",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "dlq",
+      "vhost": "/validation",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "dlq",
+      "vhost": "/mc-gateway",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    }
+  ],
+
+  "bindings": [
+    {
+      "source": "dlx",
+      "vhost": "/stream-game",
+      "destination": "dlq",
+      "destination_type": "queue",
+      "routing_key": "",
+      "arguments": {}
+    },
+    {
+      "source": "dlx",
+      "vhost": "/validation",
+      "destination": "dlq",
+      "destination_type": "queue",
+      "routing_key": "",
+      "arguments": {}
+    },
+    {
+      "source": "dlx",
+      "vhost": "/mc-gateway",
+      "destination": "dlq",
+      "destination_type": "queue",
+      "routing_key": "",
+      "arguments": {}
     }
   ]
 } 
