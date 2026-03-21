@@ -1,5 +1,6 @@
 {
   "users": [
+    {"name": "guest", "password": "DISABLED_GUEST_ACCOUNT_DO_NOT_USE_xyz123", "tags": ""},
     {"name": "admin", "password": "$ADMIN", "tags": "administrator"},
     {"name": "monitoring", "password": "$MONITORING", "tags": "monitoring"},
     {"name": "stream_game", "password": "$STREAM_GAME", "tags": ""},
@@ -8,21 +9,23 @@
   ],
 
   "vhosts": [
+    { "name": "/" },
     { "name": "/stream-game" },
     { "name": "/validation" },
     { "name": "/mc-gateway" }
   ],
 
   "permissions": [
-    { "user": "admin", "vhost": "/mc-gateway", "configure": ".*", "write": ".*", "read": ".*" },
-    { "user": "admin", "vhost": "/stream-game", "configure": ".*", "write": ".*", "read": ".*" },
-    { "user": "admin", "vhost": "/validation", "configure": ".*", "write": ".*", "read": ".*" },
-    { "user": "monitoring", "vhost": "/mc-gateway", "configure": "^$", "write": "^$", "read": ".*" },
-    { "user": "monitoring", "vhost": "/stream-game", "configure": "^$", "write": "^$", "read": ".*" },
-    { "user": "monitoring", "vhost": "/validation", "configure": "^$", "write": "^$", "read": ".*" },
-    { "user": "stream_game", "vhost": "/stream-game", "configure": "^game\\.(players|commands|events|retry|dlx)\\.*", "write": "^(amq\\.default|game\\.(players|commands|events|retry|dlx))$", "read": "^game\\.(players|commands|events|retry|dlx)\\.*" },
-    { "user": "validation_worker", "vhost": "/validation", "configure": "^$", "write": "^validation\\.", "read": "^validation\\." },
-    { "user": "mc_gateway", "vhost": "/mc-gateway", "configure": "^mc\\.(gateway|commands|server|retry|dlx)\\.*", "write": "^(amq\\.default|mc\\.(gateway|commands|server|retry|dlx))$", "read": "^mc\\.(gateway|commands|server|retry|dlx)\\.*" }
+    {"user": "guest", "vhost": "/", "configure": "^$", "write": "^$", "read": "^$"},
+    {"user": "admin", "vhost": "/mc-gateway", "configure": ".*", "write": ".*", "read": ".*" },
+    {"user": "admin", "vhost": "/stream-game", "configure": ".*", "write": ".*", "read": ".*" },
+    {"user": "admin", "vhost": "/validation", "configure": ".*", "write": ".*", "read": ".*" },
+    {"user": "monitoring", "vhost": "/mc-gateway", "configure": "^$", "write": "^$", "read": ".*" },
+    {"user": "monitoring", "vhost": "/stream-game", "configure": "^$", "write": "^$", "read": ".*" },
+    {"user": "monitoring", "vhost": "/validation", "configure": "^$", "write": "^$", "read": ".*" },
+    {"user": "stream_game", "vhost": "/stream-game", "configure": "^game\\.(players|commands|events|retry|dlx)\\.*", "write": "^(amq\\.default|game\\.(players|commands|events|retry|dlx))$", "read": "^game\\.(players|commands|events|retry|dlx)\\.*" },
+    {"user": "validation_worker", "vhost": "/validation", "configure": "^$", "write": "^validation\\.", "read": "^validation\\." },
+    {"user": "mc_gateway", "vhost": "/mc-gateway", "configure": "^mc\\.(gateway|commands|server|retry|dlx)\\.*", "write": "^(amq\\.default|mc\\.(gateway|commands|server|retry|dlx))$", "read": "^mc\\.(gateway|commands|server|retry|dlx)\\.*" }
   ],
 
   "queues": [
