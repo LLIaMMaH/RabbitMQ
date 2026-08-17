@@ -113,10 +113,16 @@ stop: down
 # Dangerous operations
 # -----------------------------
 wipe:
-	@echo "WARNING: This will permanently delete local RabbitMQ data and logs."
-	@echo "Press Ctrl+C to abort."
-	@sleep 5
-	sudo rm -rf data logs
+	@echo "=== Будут удалены следующие папки ==="
+	@ls -la data/ logs/ 2>/dev/null || true
+	@echo ""
+	@read -p "Введите 'DELETE' для подтверждения: " confirm; \
+	if [ "$$confirm" = "DELETE" ]; then \
+		sudo rm -rf data logs; \
+		echo "Удалено."; \
+	else \
+		echo "Отмена."; \
+	fi
 
 # -----------------------------
 # Diagnostics
