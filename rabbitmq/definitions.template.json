@@ -5,7 +5,8 @@
     {"name": "monitoring", "password": "$MONITORING", "tags": "monitoring"},
     {"name": "stream_game", "password": "$STREAM_GAME", "tags": ""},
     {"name": "validation_worker", "password": "$VALIDATION_WORKER", "tags": ""},
-    {"name": "mc_gateway", "password": "$MC_GATEWAY", "tags": ""}
+    {"name": "mc_gateway", "password": "$MC_GATEWAY", "tags": ""},
+    {"name": "zabbix_monitor", "password": "$ZABBIX_MONITOR", "tags": "monitoring"}
   ],
 
   "vhosts": [
@@ -25,7 +26,11 @@
     {"user": "monitoring", "vhost": "/validation", "configure": "^$", "write": "^$", "read": ".*" },
     {"user": "stream_game", "vhost": "/stream-game", "configure": "^game\\.(players|commands|events|retry|dlx)\\.*", "write": "^(amq\\.default|game\\.(players|commands|events|retry|dlx))$", "read": "^game\\.(players|commands|events|retry|dlx)\\.*" },
     {"user": "validation_worker", "vhost": "/validation", "configure": "^$", "write": "^validation\\.", "read": "^validation\\." },
-    {"user": "mc_gateway", "vhost": "/mc-gateway", "configure": "^mc\\.(gateway|commands|server|retry|dlx)\\.*", "write": "^(amq\\.default|mc\\.(gateway|commands|server|retry|dlx))$", "read": "^mc\\.(gateway|commands|server|retry|dlx)\\.*" }
+    {"user": "mc_gateway", "vhost": "/mc-gateway", "configure": "^mc\\.(gateway|commands|server|retry|dlx)\\.*", "write": "^(amq\\.default|mc\\.(gateway|commands|server|retry|dlx))$", "read": "^mc\\.(gateway|commands|server|retry|dlx)\\.*" },
+    {"user": "zabbix_monitor", "vhost": "/", "configure": "^$", "write": "^$", "read": ".*" },
+    {"user": "zabbix_monitor", "vhost": "/stream-game", "configure": "^$", "write": "^$", "read": ".*" },
+    {"user": "zabbix_monitor", "vhost": "/validation", "configure": "^$", "write": "^$", "read": ".*" },
+    {"user": "zabbix_monitor", "vhost": "/mc-gateway", "configure": "^$", "write": "^$", "read": ".*" }
   ],
 
   "exchanges": [
