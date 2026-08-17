@@ -52,7 +52,7 @@ check-env: init
 	while IFS='=' read -r key value; do \
 		case "$$key" in \
 			""|\#*) continue ;; \
-			ADMIN|MONITORING|STREAM_GAME|VALIDATION_WORKER|MC_GATEWAY) \
+			ADMIN|MONITORING|STREAM_GAME|VALIDATION_WORKER|MC_GATEWAY|ZABBIX_MONITOR) \
 				if [ "$$value" = "change_me" ] || [ -z "$$value" ]; then \
 					echo "⚠ Warning: $$key has default or empty value"; \
 					ERRORS=1; \
