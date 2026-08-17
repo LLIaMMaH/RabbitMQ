@@ -1,4 +1,4 @@
-.PHONY: help init generate-config up down restart destroy wipe logs status health shell plugins enable-plugin backup-definitions validate-json test-connection check-env start stop
+.PHONY: help init generate-config generate-cookie up down restart destroy wipe logs status health shell plugins enable-plugin backup-definitions validate-json test-connection check-env start stop
 
 # -----------------------------
 # Help
@@ -23,6 +23,7 @@ help:
 	@echo ""
 	@echo "Validation & Backup:"
 	@echo "  make check-env        - Check if .env is properly configured"
+	@echo "  make generate-cookie  - Generate unique Erlang cookie for .env"
 	@echo "  make validate-json    - Validate definitions.json syntax"
 	@echo "  make test-connection  - Test AMQP connection to RabbitMQ"
 	@echo "  make backup-definitions - Export current definitions to backup"
@@ -57,8 +58,8 @@ check-env: init
 					ERRORS=1; \
 				fi ;; \
 			RABBITMQ_ERLANG_COOKIE) \
-				if [ "$$value" = "change_me_supersecret_cookie" ] || [ -z "$$value" ]; then \
-					echo "⚠ Warning: $$key has default or empty value"; \
+				if [ -z "$$value" ]; then \
+					echo "⚠ Warning: $$key is empty. Run 'make generate-cookie'"; \
 					ERRORS=1; \
 				fi ;; \
 		esac; \
@@ -76,6 +77,15 @@ generate-config: check-env
 	@echo "Generating definitions.json from template"
 	@set -a; . ./.env; set +a; \
 	envsubst < rabbitmq/definitions.template.json > rabbitmq/definitions.json
+
+generate-cookie:
+	@COOKIE=$$(head -c 32 /dev/urandom | base64 | head -c 32); \
+	if [ -f .env ]; then \
+		sed -i "s/^RABBITMQ_ERLANG_COOKIE=.*/RABBITMQ_ERLANG_COOKIE=$$COOKIE/" .env; \
+	else \
+		echo "RABBITMQ_ERLANG_COOKIE=$$COOKIE" > .env; \
+	fi; \
+	echo "Generated Erlang cookie: $$COOKIE"
 
 # -----------------------------
 # Lifecycle
