@@ -91,6 +91,8 @@ generate-cookie:
 # Lifecycle
 # -----------------------------
 up: generate-config
+	@mkdir -p data logs
+	@chmod 777 data logs
 	docker compose up -d
 	@echo "RabbitMQ started"
 	@echo "Management UI: http://localhost:15672"
