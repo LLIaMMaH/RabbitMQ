@@ -32,6 +32,9 @@ services:
     # Хардненинг
     cap_drop:
       - ALL
+    cap_add:
+      - SETUID
+      - SETGID
     security_opt:
       - no-new-privileges:true
 
