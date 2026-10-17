@@ -105,7 +105,7 @@ make up              # сгенерировать конфиг и запусти
 | `make up` | Запустить RabbitMQ |
 | `make down` | Остановить контейнер (данные сохраняются) |
 | `make restart` | Перезапустить контейнер |
-| `make destroy` | Удалить контейнеры и volumes |
+| `make clean` | Удалить контейнеры, volumes и образы |
 | `make wipe` | **Опасно**: удалить локальные `data/` и `logs/` |
 
 > 💡 **Алиасы:** `make start` = `make up`, `make stop` = `make down` (для совместимости)
