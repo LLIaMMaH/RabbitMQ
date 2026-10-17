@@ -22,7 +22,7 @@ help:
 	@echo "  make enable-plugin    - Enable a specific plugin (NAME=<plugin>)"
 	@echo ""
 	@echo "Validation & Backup:"
-	@echo "  make check-env        - Check if .env is properly configured"
+	@echo "  make check-env        - Sync .env with .env.template (add missing, drop extra)"
 	@echo "  make generate-cookie  - Generate unique Erlang cookie for .env"
 	@echo "  make validate-json    - Validate definitions.json syntax"
 	@echo "  make test-connection  - Test AMQP connection to RabbitMQ"
@@ -47,28 +47,7 @@ init:
 # Environment validation
 # -----------------------------
 check-env: init
-	@echo "Checking .env configuration..."
-	@ERRORS=0; \
-	while IFS='=' read -r key value; do \
-		case "$$key" in \
-			""|\#*) continue ;; \
-			ADMIN|MONITORING|STREAM_GAME|VALIDATION_WORKER|MC_GATEWAY|ZABBIX_MONITOR) \
-				if [ "$$value" = "change_me" ] || [ -z "$$value" ]; then \
-					echo "⚠ Warning: $$key has default or empty value"; \
-					ERRORS=1; \
-				fi ;; \
-			RABBITMQ_ERLANG_COOKIE) \
-				if [ -z "$$value" ]; then \
-					echo "⚠ Warning: $$key is empty. Run 'make generate-cookie'"; \
-					ERRORS=1; \
-				fi ;; \
-		esac; \
-	done < .env; \
-	if [ $$ERRORS -eq 1 ]; then \
-		echo "⚠ Please update .env with secure values before production use."; \
-	else \
-		echo "✓ .env looks good."; \
-	fi
+	@python3 scripts/check_env.py
 
 # -----------------------------
 # Config generation
