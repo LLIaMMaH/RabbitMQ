@@ -1,8 +1,11 @@
 .idea
 
 .env
+.env-*
 
 data/
 logs/
 
 rabbitmq/definitions.json
+
+__pycache__/

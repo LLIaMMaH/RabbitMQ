@@ -55,6 +55,8 @@
 ├── .env.template
 ├── data/                # volume RabbitMQ (persistent)
 ├── logs/                # логи RabbitMQ
+├── scripts/
+│   └── check_env.py     # сверка .env с .env.template (make check-env)
 └── rabbitmq/
     ├── rabbitmq.conf
     ├── definitions.template.json
@@ -126,7 +128,7 @@ make up              # сгенерировать конфиг и запусти
 
 | Команда | Описание |
 |---------|----------|
-| `make check-env` | Проверить `.env` на дефолтные значения |
+| `make check-env` | Сверка `.env` с `.env.template` (добавляет недостающие, убирает лишние; бэкап при изменении) |
 | `make validate-json` | Валидация JSON-файлов |
 | `make backup-definitions` | Экспорт текущих определений в `backups/` |
 | `make generate-config` | Сгенерировать `definitions.json` из шаблона |
