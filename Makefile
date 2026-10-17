@@ -1,4 +1,4 @@
-.PHONY: help init generate-config generate-cookie up down restart destroy wipe logs status health shell plugins enable-plugin backup-definitions validate-json test-connection check-env start stop
+.PHONY: help init generate-config generate-cookie up down restart clean wipe logs status health shell plugins enable-plugin backup-definitions validate-json test-connection check-env start stop
 
 # -----------------------------
 # Help
@@ -11,7 +11,7 @@ help:
 	@echo "  make up               - Start RabbitMQ (uses existing configs)"
 	@echo "  make down             - Stop RabbitMQ containers (data preserved)"
 	@echo "  make restart          - Restart RabbitMQ"
-	@echo "  make destroy          - Stop containers and remove Docker volumes"
+	@echo "  make clean            - Stop containers, remove volumes and images"
 	@echo ""
 	@echo "Diagnostics:"
 	@echo "  make logs             - Follow RabbitMQ logs"
@@ -104,8 +104,8 @@ down:
 restart:
 	docker compose restart rabbitmq
 
-destroy:
-	docker compose down -v
+clean:
+	docker compose down -v --rmi all
 
 # Алиасы для совместимости
 start: up
