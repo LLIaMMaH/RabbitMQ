@@ -137,7 +137,7 @@ status:
 
 health:
 	@echo "Checking RabbitMQ health..."
-	docker exec rabbitmq rabbitmq-diagnostics -q ping || echo "RabbitMQ is not healthy"
+	@docker exec rabbitmq sh -c 'rabbitmq-diagnostics -q check_running && rabbitmq-diagnostics -q check_port_connectivity' || { echo "RabbitMQ is not healthy" >&2; exit 1; }
 
 shell:
 	docker exec -it rabbitmq bash
