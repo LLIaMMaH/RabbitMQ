@@ -137,7 +137,7 @@
       "vhost": "/stream-game",
       "destination": "dlq",
       "destination_type": "queue",
-      "routing_key": "",
+      "routing_key": "dlq",
       "arguments": {}
     },
     {
@@ -145,7 +145,7 @@
       "vhost": "/validation",
       "destination": "dlq",
       "destination_type": "queue",
-      "routing_key": "",
+      "routing_key": "dlq",
       "arguments": {}
     },
     {
@@ -153,8 +153,59 @@
       "vhost": "/mc-gateway",
       "destination": "dlq",
       "destination_type": "queue",
-      "routing_key": "",
+      "routing_key": "dlq",
       "arguments": {}
+    }
+  ],
+
+  "policies": [
+    {
+      "name": "dlx-to-dlq",
+      "vhost": "/stream-game",
+      "pattern": "^stream\\.game\\.events$",
+      "definition": {"dead-letter-exchange": "dlx", "dead-letter-routing-key": "dlq"},
+      "apply-to": "queues",
+      "priority": 0
+    },
+    {
+      "name": "dlx-to-dlq",
+      "vhost": "/validation",
+      "pattern": "^(validation\\.tasks|validation\\.results)$",
+      "definition": {"dead-letter-exchange": "dlx", "dead-letter-routing-key": "dlq"},
+      "apply-to": "queues",
+      "priority": 0
+    },
+    {
+      "name": "dlx-to-dlq",
+      "vhost": "/mc-gateway",
+      "pattern": "^mc\\.gateway\\.commands$",
+      "definition": {"dead-letter-exchange": "dlx", "dead-letter-routing-key": "dlq"},
+      "apply-to": "queues",
+      "priority": 0
+    },
+    {
+      "name": "dlq-limits",
+      "vhost": "/stream-game",
+      "pattern": "^dlq$",
+      "definition": {"max-length": 100000, "overflow": "reject-publish"},
+      "apply-to": "queues",
+      "priority": 0
+    },
+    {
+      "name": "dlq-limits",
+      "vhost": "/validation",
+      "pattern": "^dlq$",
+      "definition": {"max-length": 100000, "overflow": "reject-publish"},
+      "apply-to": "queues",
+      "priority": 0
+    },
+    {
+      "name": "dlq-limits",
+      "vhost": "/mc-gateway",
+      "pattern": "^dlq$",
+      "definition": {"max-length": 100000, "overflow": "reject-publish"},
+      "apply-to": "queues",
+      "priority": 0
     }
   ]
 } 
