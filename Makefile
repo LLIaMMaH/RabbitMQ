@@ -1,4 +1,6 @@
-.PHONY: help init generate-config generate-cookie up down restart clean wipe logs status health shell plugins enable-plugin backup-definitions validate-json test-connection check-env start stop
+.PHONY: help init check-env ensure-cookie generate-config generate-cookie up down restart reload-definitions clean wipe logs status health shell plugins enable-plugin backup-definitions validate-json test-connection start stop
+
+BACKUP_KEEP := 10
 
 # -----------------------------
 # Help
@@ -8,9 +10,10 @@ help:
 	@echo ""
 	@echo "Basic:"
 	@echo "  make init             - Prepare .env from template (one-time)"
-	@echo "  make up               - Start RabbitMQ (uses existing configs)"
+	@echo "  make up               - Generate config, validate JSON, start RabbitMQ"
 	@echo "  make down             - Stop RabbitMQ containers (data preserved)"
-	@echo "  make restart          - Restart RabbitMQ"
+	@echo "  make restart          - Restart container (definitions are NOT re-imported)"
+	@echo "  make reload-definitions - down + up to re-import definitions after edits"
 	@echo "  make clean            - Stop containers, remove volumes and images"
 	@echo ""
 	@echo "Diagnostics:"
@@ -22,11 +25,11 @@ help:
 	@echo "  make enable-plugin    - Enable a specific plugin (NAME=<plugin>)"
 	@echo ""
 	@echo "Validation & Backup:"
-	@echo "  make check-env        - Sync .env with .env.template (add missing, drop extra)"
-	@echo "  make generate-cookie  - Generate unique Erlang cookie for .env"
+	@echo "  make check-env        - Sync .env with .env.template (cookie auto-generated)"
+	@echo "  make generate-cookie  - Rotate Erlang cookie (auto on first up if empty)"
 	@echo "  make validate-json    - Validate definitions.json syntax"
 	@echo "  make test-connection  - Test AMQP connection to RabbitMQ"
-	@echo "  make backup-definitions - Export current definitions to backup"
+	@echo "  make backup-definitions - Export definitions to backups/ (keep last 10)"
 	@echo ""
 	@echo "Dangerous:"
 	@echo "  make wipe             - REMOVE local data/logs directories"
@@ -46,8 +49,17 @@ init:
 # -----------------------------
 # Environment validation
 # -----------------------------
-check-env: init
+check-env: ensure-cookie
 	@python3 scripts/check_env.py
+
+# Шаблон оставляет cookie пустым: без этой проверки compose подставит
+# дефолтное значение, одинаковое на всех инсталляциях.
+ensure-cookie: init
+	@if ! grep -Eq '^RABBITMQ_ERLANG_COOKIE=.+' .env || \
+		grep -Eiq '^RABBITMQ_ERLANG_COOKIE=(change_me|default_cookie_change_me)[[:space:]]*$$' .env; then \
+		echo "Erlang cookie не задан — генерирую..."; \
+		$(MAKE) --no-print-directory generate-cookie; \
+	fi
 
 # -----------------------------
 # Config generation
@@ -56,15 +68,16 @@ generate-config: check-env
 	@echo "Generating definitions.json from template"
 	@set -a; . ./.env; set +a; \
 	envsubst < rabbitmq/definitions.template.json > rabbitmq/definitions.json
+	@$(MAKE) --no-print-directory validate-json
 
-generate-cookie:
-	@COOKIE=$$(head -c 32 /dev/urandom | base64 | head -c 32); \
-	if [ -f .env ]; then \
-		sed -i "s/^RABBITMQ_ERLANG_COOKIE=.*/RABBITMQ_ERLANG_COOKIE=$$COOKIE/" .env; \
+generate-cookie: init
+	@COOKIE=$$(python3 -c 'import secrets; print(secrets.token_hex(32))'); \
+	if grep -q '^RABBITMQ_ERLANG_COOKIE=' .env; then \
+		sed -i "s|^RABBITMQ_ERLANG_COOKIE=.*|RABBITMQ_ERLANG_COOKIE=$$COOKIE|" .env; \
 	else \
-		echo "RABBITMQ_ERLANG_COOKIE=$$COOKIE" > .env; \
+		printf 'RABBITMQ_ERLANG_COOKIE=%s\n' "$$COOKIE" >> .env; \
 	fi; \
-	echo "Generated Erlang cookie: $$COOKIE"
+	echo "Erlang cookie сгенерирован (значение не выводится)."
 
 # -----------------------------
 # Lifecycle
@@ -81,7 +94,15 @@ down:
 	docker compose down
 
 restart:
+	@echo "ВНИМАНИЕ: docker compose restart НЕ переимпортирует definitions.json."
+	@echo "Если менялись пользователи/права/очереди — используйте make reload-definitions."
 	docker compose restart rabbitmq
+
+# Именно этот рестарт применяет правки definitions (короткий даунтайм).
+reload-definitions: validate-json
+	@echo "Перезапуск с повторным импортом definitions.json..."
+	docker compose down
+	$(MAKE) up
 
 clean:
 	docker compose down -v --rmi all
@@ -140,7 +161,9 @@ backup-definitions:
 	@docker exec rabbitmq rabbitmqctl export_definitions /tmp/definitions_backup.json 2>/dev/null || \
 		(echo "Note: export_definitions requires rabbitmq_management plugin" && exit 1)
 	@docker cp rabbitmq:/tmp/definitions_backup.json backups/definitions-$$(date +%Y%m%d-%H%M%S).json
-	@echo "Backup saved to backups/"
+	@docker exec rabbitmq rm -f /tmp/definitions_backup.json
+	@ls -1t backups/definitions-*.json 2>/dev/null | tail -n +$$(( $(BACKUP_KEEP) + 1 )) | xargs -r rm --
+	@echo "Backup saved to backups/ (хранятся последние $(BACKUP_KEEP))"
 
 validate-json:
 	@echo "Validating definitions.template.json syntax..."
