@@ -125,7 +125,7 @@ make up              # сгенерировать cookie и конфиг, про
 |---------|----------|
 | `make logs` | Вывод логов в реальном времени |
 | `make status` | Статус контейнеров |
-| `make health` | Проверка здоровья RabbitMQ |
+| `make health` | `check_running` + `check_port_connectivity`; при ошибке — ненулевой код возврата |
 | `make shell` | Войти в контейнер (bash) |
 | `make plugins` | Список доступных плагинов |
 | `make enable-plugin NAME=<plugin>` | Включить плагин |
