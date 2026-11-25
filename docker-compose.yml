@@ -17,8 +17,8 @@ services:
       - "15672:15672"
 
     environment:
-      # Erlang Cookie для безопасности кластеризации
-      - RABBITMQ_ERLANG_COOKIE=${RABBITMQ_ERLANG_COOKIE:-default_cookie_change_me}
+      # Erlang Cookie: без явного значения compose упадёт, а не подставит дефолт
+      - RABBITMQ_ERLANG_COOKIE=${RABBITMQ_ERLANG_COOKIE:?Set RABBITMQ_ERLANG_COOKIE in .env (make generate-cookie)}
 
     volumes:
       - ./data:/var/lib/rabbitmq

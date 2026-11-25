@@ -55,6 +55,7 @@
 ├── .env.template
 ├── data/                # volume RabbitMQ (persistent)
 ├── logs/                # логи RabbitMQ
+├── backups/             # экспорт definitions (последние 10, не в git)
 ├── scripts/
 │   └── check_env.py     # сверка .env с .env.template (make check-env)
 └── rabbitmq/
@@ -87,8 +88,12 @@
 ```bash
 make init            # создать .env из шаблона
 nano .env            # заполнить реальные пароли
-make up              # сгенерировать конфиг и запустить RabbitMQ
+make up              # сгенерировать cookie и конфиг, проверить JSON и запустить RabbitMQ
 ```
+
+> `RABBITMQ_ERLANG_COOKIE` можно не заполнять вручную: `make up` сгенерирует его
+> автоматически, если он пуст. При прямом `docker compose up` без cookie compose
+> упадёт с ошибкой — дефолтного значения больше нет.
 
 После старта:
 - Management UI: http://localhost:15672
@@ -106,11 +111,13 @@ make up              # сгенерировать конфиг и запусти
 | `make init` | Создать `.env` из шаблона (первый запуск) |
 | `make up` | Запустить RabbitMQ |
 | `make down` | Остановить контейнер (данные сохраняются) |
-| `make restart` | Перезапустить контейнер |
+| `make restart` | Перезапустить контейнер (definitions **не** переимпортируются) |
+| `make reload-definitions` | `down` + `up` с повторным импортом — после правок прав/топологии |
 | `make clean` | Удалить контейнеры, volumes и образы |
 | `make wipe` | **Опасно**: удалить локальные `data/` и `logs/` |
 
-> 💡 **Алиасы:** `make start` = `make up`, `make stop` = `make down` (для совместимости)
+> 💡 **Алиасы:** `make start` = `make up`, `make stop` = `make down` (для совместимости).
+> `make generate-cookie` перегенерирует cookie; `make up` делает это сам, если он пуст.
 
 ### Диагностика
 
@@ -129,9 +136,9 @@ make up              # сгенерировать конфиг и запусти
 | Команда | Описание |
 |---------|----------|
 | `make check-env` | Сверка `.env` с `.env.template` (добавляет недостающие, убирает лишние; бэкап при изменении) |
-| `make validate-json` | Валидация JSON-файлов |
-| `make backup-definitions` | Экспорт текущих определений в `backups/` |
-| `make generate-config` | Сгенерировать `definitions.json` из шаблона |
+| `make validate-json` | Валидация JSON-файлов (вызывается автоматически при `make up`) |
+| `make backup-definitions` | Экспорт определений в `backups/`; хранятся последние 10 копий |
+| `make generate-config` | Сгенерировать `definitions.json` из шаблона и проверить JSON |
 
 ---
 
@@ -140,6 +147,8 @@ make up              # сгенерировать конфиг и запусти
 - `.env` **не коммитится**
 - Пароли не хранятся в `definitions.json` в репозитории
 - `definitions.json` генерируется локально
+- `RABBITMQ_ERLANG_COOKIE` генерируется локально; compose не запустится без него
+- `backups/` не коммитится (экспорт definitions содержит метаданные брокера)
 - Management API не используется для инициализации
 
 Это исключает:
