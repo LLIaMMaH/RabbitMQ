@@ -177,6 +177,9 @@ make up              # сгенерировать cookie и конфиг, про
 - `RABBITMQ_ERLANG_COOKIE` генерируется локально; compose не запустится без него
 - `backups/` не коммитится (экспорт definitions содержит метаданные брокера)
 - Management API не используется для инициализации
+- `monitoring` (RabbitMQ-Health) и `zabbix_monitor` (Zabbix) — единственные,
+  кроме `admin`, пользователи с `read: ".*"`: им нужно видеть все vhost через
+  Management API; остальные права ограничены префиксными regex
 
 Это исключает:
 - временные уязвимые окна
