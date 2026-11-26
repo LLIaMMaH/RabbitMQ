@@ -77,9 +77,10 @@
 1. Пароли описываются в `.env` (локально, не в git)
 2. `definitions.template.json` содержит плейсхолдеры `$ADMIN`, `$STREAM_GAME`, и т.д.
 3. `make generate-config`:
-   - подгружает `.env`
-   - выполняет `envsubst`
-   - генерирует `definitions.json`
+   - читает `.env` парсером `scripts/check_env.py` **без** `set -a; . ./.env`
+     (пароли с `$`, `!`, пробелами и кавычками остаются литералами);
+   - передаёт значения в `envsubst` с явным списком переменных;
+   - проверяет результат как JSON и генерирует `definitions.json`
 4. RabbitMQ при старте:
    - читает `rabbitmq.conf`
    - загружает `definitions.json`
