@@ -33,7 +33,12 @@
 
 ## 🧱 Архитектура
 
-- **RabbitMQ 3.13 + Management Plugin**
+- **RabbitMQ 3.13.7 + Management Plugin**, образ зафиксирован по digest
+  (`3.13.7-management@sha256:e582c0b…`)
+- Плагины не включаются рантайм-командой: стандартный management уже в образе,
+  shovel-плагины убраны (shovels в definitions нет). При необходимости — через
+  смонтированный `rabbitmq/enabled_plugins`
+- Лимиты контейнера: `mem_limit: 1G`, `memswap_limit: 2G`, `cpus: "2.0"`
 - Конфигурация загружается **декларативно при старте**:
   - пользователи
   - vhost'ы
@@ -145,6 +150,8 @@ make up              # сгенерировать cookie и конфиг, про
 
 > 💡 **Алиасы:** `make start` = `make up`, `make stop` = `make down` (для совместимости).
 > `make generate-cookie` перегенерирует cookie; `make up` делает это сам, если он пуст.
+> Перед стартом `make up` через `sudo` выставляет владельца `data/` и `logs/`
+> в `999:999` (пользователь RabbitMQ внутри контейнера) вместо `chmod 777`.
 
 ### Диагностика
 

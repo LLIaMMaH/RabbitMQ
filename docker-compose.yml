@@ -1,14 +1,15 @@
 services:
   rabbitmq:
-    image: rabbitmq:3.13-management
+    # Patch-версия + digest: тег 3.13-management «плавающий», образ мог тихо
+    # обновиться и изменить поведение без правок в этом репозитории.
+    image: rabbitmq:3.13.7-management@sha256:e582c0bc7766f3342496d8485efb5a1df782b5ce3886ad017e2eaae442311f69
     container_name: rabbitmq
     hostname: rabbitmq
     restart: unless-stopped
 
-    # Включаем полезные плагины при старте
-    command: >
-      sh -c "rabbitmq-plugins enable rabbitmq_shovel_management &&
-             rabbitmq-server"
+    # Никаких rabbitmq-plugins enable при старте: стандартный management уже
+    # включён в образе, а shovels в definitions нет. Если появятся — описать
+    # декларативно через смонтированный rabbitmq/enabled_plugins.
 
     ports:
       # AMQP для локальной сети (доступ из других контейнеров)
@@ -46,14 +47,11 @@ services:
       retries: 3
       start_period: 60s
 
-    # Ограничение ресурсов + логирование
-    deploy:
-      resources:
-        limits:
-          memory: 1G
-          cpus: "2.0"
-        reservations:
-          memory: 512M
+    # Лимиты по эталону проектов: deploy.resources Compose не гарантирует,
+    # поэтому используем сервисные ключи (1G RAM + 1G swap, 2 CPU).
+    mem_limit: 1G
+    memswap_limit: 2G
+    cpus: "2.0"
 
     logging:
       driver: json-file
