@@ -64,10 +64,10 @@ ensure-cookie: init
 # -----------------------------
 # Config generation
 # -----------------------------
-generate-config: check-env
+# check-env выполняется внутри scripts/check_env.py --subst (один проход)
+generate-config:
 	@echo "Generating definitions.json from template"
-	@set -a; . ./.env; set +a; \
-	envsubst < rabbitmq/definitions.template.json > rabbitmq/definitions.json
+	@python3 scripts/check_env.py --subst rabbitmq/definitions.template.json rabbitmq/definitions.json
 	@$(MAKE) --no-print-directory validate-json
 
 generate-cookie: init
