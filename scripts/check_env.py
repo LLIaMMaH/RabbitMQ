@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-"""Сверка .env с .env.template.
+"""Сверка .env с .env.template и безопасная генерация definitions.json.
 
 Перестраивает .env в точном порядке .env.template:
 - комментарии, секции и порядок строк берутся из шаблона;
@@ -15,10 +15,20 @@
 молча не подставляются: недостающий обязательный ключ с таким значением
 попадает в отчёт и блокирует запуск — оператор заполняет его вручную.
 
-Запуск: make check-env или python3 scripts/check_env.py
+Значения читаются обычным парсером, а не ``. ./.env``: пароли с ``$``, ``!``,
+пробелами и кавычками не исполняются shell и не теряются.
+
+Запуск:
+  python3 scripts/check_env.py [ENV_FILE] [ENV_TEMPLATE]
+  python3 scripts/check_env.py [ENV_FILE] [ENV_TEMPLATE] \
+      --subst DEFINITIONS_TEMPLATE OUTPUT
 """
 
+import argparse
+import json
+import os
 import re
+import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -28,6 +38,19 @@ ENV_FILE = ROOT / ".env"
 TEMPLATE_FILE = ROOT / ".env.template"
 
 _ASSIGNMENT_RE = re.compile(r"^([A-Za-z0-9_]+)\s*=")
+_PLACEHOLDER_IN_TEMPLATE_RE = re.compile(r"\$([A-Za-z_][A-Za-z0-9_]*)")
+
+# Явный список переменных, которые подставляются в definitions.template.json.
+# Если в шаблоне появится новый $VAR, генерация упадёт, пока его не добавят
+# сюда и в .env.template — так нельзя случайно подставить пустоту.
+SUBST_VARS = (
+    "ADMIN",
+    "MONITORING",
+    "STREAM_GAME",
+    "VALIDATION_WORKER",
+    "MC_GATEWAY",
+    "ZABBIX_MONITOR",
+)
 
 # Значения-плейсхолдеры из шаблона: их нельзя бездумно подставлять в .env,
 # иначе при добавлении нового ключа (например нового пользователя) в .env
@@ -66,6 +89,97 @@ def _key_of(line: str) -> str | None:
         return None
     match = _ASSIGNMENT_RE.match(line)
     return match.group(1) if match else None
+
+
+def _unquote_value(raw: str) -> str:
+    """Снять обрамляющие кавычки, не выполняя подстановок.
+
+    Одинарные кавычки — полностью статичное значение. В двойных
+    разбираются только ``\\"`` и ``\\\\``; ``$`` и ``!`` остаются как есть.
+    """
+    value = raw.strip()
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
+        inner = value[1:-1]
+        if value[0] == "'":
+            return inner
+        return inner.replace('\\"', '"').replace("\\\\", "\\")
+    return value
+
+
+def parse_env_values(env_path: Path) -> dict[str, str]:
+    """Прочитать .env в словарь без вызова shell.
+
+    Строки вида ``KEY='a $b'`` и ``KEY="a b"`` возвращаются без кавычек.
+    Внутренние комментарии не отрезаются: ``#`` и ``!`` могут быть частью
+    пароля. Комментарии распознаются только с начала строки.
+    """
+    values: dict[str, str] = {}
+    for line in _read_lines(env_path):
+        key = _key_of(line)
+        if key is not None:
+            values[key] = _unquote_value(line.split("=", 1)[1])
+    return values
+
+
+def _json_escape(value: str) -> str:
+    """Подготовить значение для вставки внутрь кавычек JSON-строки."""
+    return value.replace("\\", "\\\\").replace('"', '\\"')
+
+
+def render_definitions(
+    template_path: Path,
+    output_path: Path,
+    env_path: Path,
+) -> None:
+    """Сгенерировать definitions.json через envsubst с явным списком переменных.
+
+    Никакого ``set -a; . ./.env``: значения берутся парсером и передаются
+    в envsubst через окружение дочернего процесса. envsubst получает
+    SHELL-FORMAT со списком SUBST_VARS, поэтому посторонние ``$VAR`` в шаблоне
+    не подставляются молча.
+    """
+    if not template_path.is_file():
+        raise FileNotFoundError(f"Template not found: {template_path}")
+
+    template = template_path.read_text(encoding="utf-8")
+    used = set(_PLACEHOLDER_IN_TEMPLATE_RE.findall(template))
+    unknown = sorted(used - set(SUBST_VARS))
+    if unknown:
+        raise ValueError(
+            "В definitions.template.json есть переменные вне явного списка: "
+            + ", ".join(f"${name}" for name in unknown)
+        )
+
+    values = parse_env_values(env_path)
+    missing = [name for name in SUBST_VARS if name not in values]
+    if missing:
+        raise ValueError(
+            "В .env нет переменных для definitions: " + ", ".join(missing)
+        )
+
+    child_env = os.environ.copy()
+    child_env.update({name: _json_escape(values[name]) for name in SUBST_VARS})
+    shell_format = " ".join(f"${name}" for name in SUBST_VARS)
+
+    try:
+        proc = subprocess.run(
+            ["envsubst", shell_format],
+            input=template,
+            text=True,
+            capture_output=True,
+            env=child_env,
+        )
+    except FileNotFoundError as exc:
+        raise RuntimeError("envsubst не найден в PATH") from exc
+    if proc.returncode != 0:
+        raise RuntimeError(f"envsubst завершился с кодом {proc.returncode}: {proc.stderr.strip()}")
+
+    try:
+        json.loads(proc.stdout)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"Сгенерированный JSON некорректен: {exc}") from exc
+
+    output_path.write_text(proc.stdout, encoding="utf-8")
 
 
 def sync_env(
@@ -148,12 +262,21 @@ def sync_env(
 
 
 def main() -> int:
-    env_path = Path(sys.argv[1]) if len(sys.argv) > 1 else ENV_FILE
-    template_path = Path(sys.argv[2]) if len(sys.argv) > 2 else TEMPLATE_FILE
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("env_path", nargs="?", type=Path, default=ENV_FILE)
+    parser.add_argument("template_path", nargs="?", type=Path, default=TEMPLATE_FILE)
+    parser.add_argument(
+        "--subst",
+        nargs=2,
+        metavar=("DEFINITIONS_TEMPLATE", "OUTPUT"),
+        type=Path,
+        help="сгенерировать definitions.json через envsubst с явным списком переменных",
+    )
+    args = parser.parse_args()
 
-    print(f"Проверка {env_path.name} относительно {template_path.name}...")
+    print(f"Проверка {args.env_path.name} относительно {args.template_path.name}...")
     try:
-        report = sync_env(env_path, template_path)
+        report = sync_env(args.env_path, args.template_path)
     except FileNotFoundError as e:
         print(f"Ошибка: {e}", file=sys.stderr)
         return 1
@@ -174,18 +297,25 @@ def main() -> int:
         print("Проверка прервана — заполните значения и повторите.", file=sys.stderr)
         return 1
 
-    if not added and not removed and backup is None:
-        print("Изменений не требуется — файл актуален.")
-        return 0
-
     if added:
         print(f"Добавлено: {', '.join(added)}")
     if removed:
         print(f"Удалено: {', '.join(removed)}")
-    if not added and not removed:
+    if not added and not removed and backup is None:
+        print("Изменений не требуется — файл актуален.")
+    elif not added and not removed:
         print("Порядок строк приведён к .env.template.")
     if backup:
         print(f"Резервная копия: {backup}")
+
+    if args.subst:
+        template_path, output_path = args.subst
+        try:
+            render_definitions(template_path, output_path, args.env_path)
+        except (FileNotFoundError, ValueError, RuntimeError, OSError) as e:
+            print(f"Ошибка генерации definitions: {e}", file=sys.stderr)
+            return 1
+        print(f"Сгенерирован {output_path} через envsubst ({len(SUBST_VARS)} переменных).")
     return 0
 
 
