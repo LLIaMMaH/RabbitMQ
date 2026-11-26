@@ -8,12 +8,11 @@
   по умолчанию из шаблона, если это не плейсхолдер);
 - лишние активные переменные удаляются.
 
-Если файл нужно изменить, перед записью создаётся резервная копия
-.env-YYYYMMDD-HHMMSS.
-
-Плейсхолдеры шаблона (``change_me``, ``<...>``, пустое значение) в .env
-молча не подставляются: недостающий обязательный ключ с таким значением
-попадает в отчёт и блокирует запуск — оператор заполняет его вручную.
+Проверка транзакционная: если есть незаполненные значения (ключ отсутствует
+или в .env лежит ``change_me``/``<...>``/пусто), файл НЕ перезаписывается,
+бэкап НЕ создаётся и права НЕ меняются. При успехе файл пишется через
+временный файл с заменой, перед записью создаётся бэкап
+.env-YYYYMMDD-HHMMSS, а сам .env и бэкап получают права 600.
 
 Значения читаются обычным парсером, а не ``. ./.env``: пароли с ``$``, ``!``,
 пробелами и кавычками не исполняются shell и не теряются.
@@ -28,8 +27,10 @@ import argparse
 import json
 import os
 import re
+import stat
 import subprocess
 import sys
+import tempfile
 from datetime import datetime
 from pathlib import Path
 
@@ -69,11 +70,11 @@ def _is_comment(line: str) -> bool:
 
 
 def _is_placeholder(value: str) -> bool:
-    """Значение-заглушка из шаблона, которое нельзя вставлять молча.
+    """Незаполненное значение: пустое, ``change_me`` или ``<...>``.
 
-    ``change_me``, ``<...>`` и пустое значение считаются плейсхолдерами:
-    если ключа в .env нет, такое значение не подставляется, а попадает в
-    ``unresolved`` — чтобы оператор заполнил его реальным значением вручную.
+    Проверяется и у отсутствующих ключей (нельзя подставить заглушку из
+    шаблона), и у уже существующих в .env (нельзя молча скопировать заглушку
+    дальше). Такие ключи попадают в ``unresolved`` и блокируют запись.
     """
     value = value.strip()
     return (
@@ -156,6 +157,11 @@ def render_definitions(
         raise ValueError(
             "В .env нет переменных для definitions: " + ", ".join(missing)
         )
+    placeholders = [name for name in SUBST_VARS if _is_placeholder(values[name])]
+    if placeholders:
+        raise ValueError(
+            "В .env остались значения-заглушки: " + ", ".join(placeholders)
+        )
 
     child_env = os.environ.copy()
     child_env.update({name: _json_escape(values[name]) for name in SUBST_VARS})
@@ -188,8 +194,13 @@ def sync_env(
     *,
     backup: bool = True,
     backup_suffix: str | None = None,
-) -> dict[str, list[str] | str | None]:
-    """Синхронизировать .env с шаблоном.
+) -> dict[str, list[str] | str | None | bool]:
+    """Транзакционно синхронизировать .env с шаблоном.
+
+    Сначала вычисляется новый текст и собираются все ``unresolved``. Если они
+    есть, файл остаётся нетронутым: ни перезаписи, ни бэкапа, ни смены прав.
+    При успехе .env заменяется через временный файл и получает права 600;
+    бэкап (если создаётся) тоже получает 600.
 
     Args:
         env_path: Путь к файлу .env.
@@ -198,10 +209,9 @@ def sync_env(
         backup_suffix: Суффикс (дата-время) для имени копии.
 
     Returns:
-        Словарь с отчётом: added, removed, unresolved, backup (путь к копии
-        или None). ``unresolved`` — обязательные ключи из шаблона, которых нет
-        в .env и чьё шаблонное значение является плейсхолдером: их нельзя
-        вставлять, нужно заполнить вручную.
+        added/removed — что изменилось в содержимом; unresolved — ключи с
+        незаполненными значениями; backup — путь к копии или None;
+        mode_changed — потребовалась ли смена прав на 600.
 
     Raises:
         FileNotFoundError: Если .env или шаблон отсутствуют.
@@ -211,7 +221,10 @@ def sync_env(
     if not env_path.is_file():
         raise FileNotFoundError(f"{env_path} not found. Create it from {template_path}")
 
+    # Сырые значения — чтобы сохранить кавычки и пробелы при перезаписи;
+    # разобранные — чтобы заметить заглушки в уже существующих ключах.
     env_values: dict[str, str] = {}
+    parsed_values = parse_env_values(env_path)
     for line in _read_lines(env_path):
         key = _key_of(line)
         if key is not None:
@@ -228,10 +241,12 @@ def sync_env(
             new_lines.append(line)
             continue
         template_keys.add(key)
+        raw_template_value = line.split("=", 1)[1]
         if key in env_values:
+            if _is_placeholder(parsed_values.get(key, "")):
+                unresolved.append(key)
             new_lines.append(f"{key}={env_values[key]}")
-        elif _is_placeholder(line.split("=", 1)[1]):
-            # Плейсхолдер не вставляем — пусть оператор укажет реальное значение.
+        elif _is_placeholder(_unquote_value(raw_template_value)):
             unresolved.append(key)
         else:
             new_lines.append(line)
@@ -241,23 +256,53 @@ def sync_env(
 
     old_content = env_path.read_text(encoding="utf-8")
     new_content = "\n".join(new_lines) + "\n"
+    mode_changed = stat.S_IMODE(env_path.stat().st_mode) != 0o600
 
-    if new_content == old_content:
-        return {"added": [], "removed": [], "unresolved": unresolved, "backup": None}
+    # Транзакционная граница: дальше ни одного изменения на диске.
+    if unresolved:
+        return {
+            "added": [],
+            "removed": [],
+            "unresolved": unresolved,
+            "backup": None,
+            "mode_changed": False,
+        }
 
     backup_path: Path | None = None
-    if backup:
+    if backup and new_content != old_content:
         timestamp = backup_suffix or datetime.now().strftime("%Y%m%d-%H%M%S")
         backup_path = Path(str(env_path) + "-" + timestamp)
         backup_path.write_text(old_content, encoding="utf-8")
+        os.chmod(backup_path, 0o600)
 
-    env_path.write_text(new_content, encoding="utf-8")
+    if new_content != old_content:
+        tmp_path: Path | None = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                dir=env_path.parent,
+                prefix=env_path.name + ".",
+                suffix=".tmp",
+                delete=False,
+            ) as tmp:
+                tmp_path = Path(tmp.name)
+                tmp.write(new_content)
+            os.chmod(tmp_path, 0o600)
+            os.replace(tmp_path, env_path)
+        finally:
+            if tmp_path is not None and tmp_path.exists():
+                tmp_path.unlink()
+
+    if mode_changed:
+        os.chmod(env_path, 0o600)
 
     return {
         "added": added,
         "removed": removed,
         "unresolved": unresolved,
         "backup": str(backup_path) if backup_path else None,
+        "mode_changed": mode_changed,
     }
 
 
@@ -285,26 +330,30 @@ def main() -> int:
     removed = report["removed"]
     unresolved = report["unresolved"]
     backup = report["backup"]
+    mode_changed = report["mode_changed"]
 
     if unresolved:
         print(
-            "ВНИМАНИЕ: в .env не заданы обязательные ключи "
-            "(в шаблоне только плейсхолдеры):",
+            "ВНИМАНИЕ: в .env остались незаполненные значения "
+            "(change_me, <...> или пустое):",
             file=sys.stderr,
         )
         for key in unresolved:
             print(f"  - {key} (задайте реальное значение вручную в .env)", file=sys.stderr)
-        print("Проверка прервана — заполните значения и повторите.", file=sys.stderr)
+        print("Проверка прервана: .env не изменён, бэкап не создавался.", file=sys.stderr)
         return 1
 
     if added:
         print(f"Добавлено: {', '.join(added)}")
     if removed:
         print(f"Удалено: {', '.join(removed)}")
-    if not added and not removed and backup is None:
-        print("Изменений не требуется — файл актуален.")
-    elif not added and not removed:
-        print("Порядок строк приведён к .env.template.")
+    if not added and not removed:
+        if backup is not None:
+            print("Порядок строк приведён к .env.template.")
+        elif not mode_changed:
+            print("Изменений не требуется — файл актуален.")
+    if mode_changed:
+        print("Права .env приведены к 600.")
     if backup:
         print(f"Резервная копия: {backup}")
 

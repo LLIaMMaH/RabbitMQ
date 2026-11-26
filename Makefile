@@ -64,8 +64,8 @@ ensure-cookie: init
 # -----------------------------
 # Config generation
 # -----------------------------
-# check-env выполняется внутри scripts/check_env.py --subst (один проход)
-generate-config:
+# ensure-cookie готовит cookie; sync + subst выполняются в один проход скриптом
+generate-config: ensure-cookie
 	@echo "Generating definitions.json from template"
 	@python3 scripts/check_env.py --subst rabbitmq/definitions.template.json rabbitmq/definitions.json
 	@$(MAKE) --no-print-directory validate-json
