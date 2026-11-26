@@ -84,7 +84,13 @@ generate-cookie: init
 # -----------------------------
 up: generate-config
 	@mkdir -p data logs
-	@chmod 777 data logs
+	@# RabbitMQ внутри контейнера работает под uid 999, поэтому каталоги
+	@# должны принадлежать ему, а не быть world-writable.
+	@if [ "$$(id -u)" -eq 0 ]; then \
+		chown -R 999:999 data logs; \
+	else \
+		sudo chown -R 999:999 data logs; \
+	fi
 	docker compose up -d
 	@echo "RabbitMQ started"
 	@echo "Management UI: http://localhost:15672"
