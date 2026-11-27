@@ -39,9 +39,11 @@ services:
     security_opt:
       - no-new-privileges:true
 
-    # Проверка здоровья контейнера
+    # Проверка здоровья контейнера. При cap_drop: ALL у root нет CAP_DAC_OVERRIDE,
+    # поэтому rabbitmq-diagnostics не может прочитать .erlang.cookie (0400, uid 999).
+    # Команды выполняются от пользователя rabbitmq через gosu из образа.
     healthcheck:
-      test: ["CMD-SHELL", "rabbitmq-diagnostics -q check_running && rabbitmq-diagnostics -q check_port_connectivity"]
+      test: ["CMD-SHELL", "gosu rabbitmq rabbitmq-diagnostics -q check_running && gosu rabbitmq rabbitmq-diagnostics -q check_port_connectivity"]
       interval: 30s
       timeout: 10s
       retries: 3
