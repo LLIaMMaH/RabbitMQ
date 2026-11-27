@@ -93,11 +93,26 @@ runs:
           echo "ВНИМАНИЕ: бэкап definitions не создан (брокер мог быть остановлен)" >&2
         fi
 
+        # docker compose up -d возвращается до того, как Erlang-нода начнёт
+        # отвечать на диагностику. Ждём, а не считаем первый опрос провалом.
+        wait_health() {
+          local output=""
+          for attempt in $(seq 1 45); do
+            if output=$(make health 2>&1); then
+              printf '%s\n' "$output"
+              return 0
+            fi
+            sleep 2
+          done
+          printf '%s\n' "$output" >&2
+          return 1
+        }
+
         rollback() {
           echo "ОТКАТ на $PREV_SHA..." >&2
           git checkout -q -B "$DEPLOY_BRANCH" "$PREV_SHA" || return 1
           make reload-definitions || true
-          make health || true
+          wait_health || true
         }
 
         echo "==> Реимпорт definitions"
@@ -108,7 +123,8 @@ runs:
         fi
 
         echo "==> Проверка здоровья брокера"
-        if ! make health; then
+        echo "    (до 90 секунд на запуск ноды)"
+        if ! wait_health; then
           rollback || true
           echo "Деплой провален: брокер нездоров после реимпорта" >&2
           exit 1
