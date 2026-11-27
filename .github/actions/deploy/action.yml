@@ -1,5 +1,5 @@
 name: Deploy RabbitMQ на стенд
-description: Обновить рабочую копию на стенде и перезапустить RabbitMQ с реимпортом definitions
+description: Обновить рабочую копию на стенде, перезапустить брокера и проверить здоровье
 
 # Аналог GitLab-шаблона .deploy: одна реализация на два стенда.
 # Вызывается из .github/workflows/ci.yml с разными host/directory/branch.
@@ -17,8 +17,14 @@ inputs:
   branch:
     description: Ветка, на которую переключается стенд
     required: true
+  sha:
+    description: Коммит запустившего workflow, который должен оказаться на стенде
+    required: true
   key_b64:
     description: Приватный SSH-ключ в base64 одной строкой
+    required: true
+  known_hosts:
+    description: known_hosts с заранее зафиксированными отпечатками хоста
     required: true
 
 runs:
@@ -27,32 +33,101 @@ runs:
     - name: Подготовить SSH-ключ и known_hosts
       shell: bash
       env:
-        DEPLOY_HOST: ${{ inputs.host }}
         DEPLOY_KEY_B64: ${{ inputs.key_b64 }}
+        DEPLOY_KNOWN_HOSTS: ${{ inputs.known_hosts }}
       run: |
         set -euo pipefail
-        install -m 700 -d "$RUNNER_TEMP/.ssh"
-        printf '%s' "$DEPLOY_KEY_B64" | base64 -d > "$RUNNER_TEMP/.ssh/deploy_key"
-        chmod 600 "$RUNNER_TEMP/.ssh/deploy_key"
-        # Ключ хоста фиксируем заранее: StrictHostKeyChecking остаётся включённым.
-        ssh-keyscan -H "$DEPLOY_HOST" > "$RUNNER_TEMP/.ssh/known_hosts"
+        grep -q '[^[:space:]]' <<<"$DEPLOY_KEY_B64" || { echo "Секрет DEPLOY_KEY_B64 пуст" >&2; exit 1; }
+        grep -q '[^[:space:]]' <<<"$DEPLOY_KNOWN_HOSTS" || { echo "Секрет DEPLOY_KNOWN_HOSTS пуст" >&2; exit 1; }
+        umask 077
+        # Каталог уникален для job: runner постоянный, параллельные задачи не должны
+        # перетирать ключ и known_hosts друг друга.
+        SSH_DIR="$RUNNER_TEMP/.ssh/$GITHUB_RUN_ID-$GITHUB_JOB"
+        install -m 700 -d "$SSH_DIR"
+        printf '%s' "$DEPLOY_KEY_B64" | base64 -d > "$SSH_DIR/deploy_key"
+        chmod 600 "$SSH_DIR/deploy_key"
+        # Отпечатки приходят из секрета и не снимаются заново через ssh-keyscan:
+        # иначе StrictHostKeyChecking проверял бы подменённый ключ хоста.
+        printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$SSH_DIR/known_hosts"
+        chmod 600 "$SSH_DIR/known_hosts"
 
-    - name: Обновить код и перезапустить брокера
+    - name: Обновить код, перезапустить брокера и проверить здоровье
       shell: bash
       env:
         DEPLOY_HOST: ${{ inputs.host }}
         DEPLOY_USER: ${{ inputs.user }}
         DEPLOY_DIR: ${{ inputs.directory }}
         DEPLOY_BRANCH: ${{ inputs.branch }}
+        DEPLOY_SHA: ${{ inputs.sha }}
       run: |
         set -euo pipefail
+        umask 077
+        SSH_DIR="$RUNNER_TEMP/.ssh/$GITHUB_RUN_ID-$GITHUB_JOB"
+        install -m 700 -d "$SSH_DIR"
+        {
+          printf 'DEPLOY_DIR=%q\n' "$DEPLOY_DIR"
+          printf 'DEPLOY_BRANCH=%q\n' "$DEPLOY_BRANCH"
+          printf 'DEPLOY_SHA=%q\n' "$DEPLOY_SHA"
+          cat <<'REMOTE'
+        set -euo pipefail
+
+        echo "==> Проверка окружения на стенде"
+        cd "$DEPLOY_DIR"
+        test -f .env || { echo "Отсутствует .env" >&2; exit 1; }
+        grep -Eq '^RABBITMQ_ERLANG_COOKIE=.+' .env || { echo "Пустой Erlang cookie" >&2; exit 1; }
+        command -v make >/dev/null || { echo "make не найден" >&2; exit 1; }
+        command -v docker >/dev/null || { echo "docker не найден" >&2; exit 1; }
+        docker compose version >/dev/null 2>&1 || { echo "docker compose недоступен" >&2; exit 1; }
+
+        echo "==> Фиксируем код на коммите $DEPLOY_SHA"
+        git fetch origin "$DEPLOY_BRANCH"
+        PREV_SHA=$(git rev-parse HEAD)
+        git cat-file -e "${DEPLOY_SHA}^{commit}" || { echo "Коммит $DEPLOY_SHA отсутствует в истории $DEPLOY_BRANCH" >&2; exit 1; }
+        git checkout -q -B "$DEPLOY_BRANCH" "$DEPLOY_SHA"
+        test "$(git rev-parse HEAD)" = "$DEPLOY_SHA" || { echo "Не удалось переключиться на нужный коммит" >&2; exit 1; }
+        echo "Активный коммит: $(git rev-parse HEAD)"
+
+        echo "==> Сверка .env и бэкап definitions"
+        make check-env
+        if ! make backup-definitions; then
+          echo "ВНИМАНИЕ: бэкап definitions не создан (брокер мог быть остановлен)" >&2
+        fi
+
+        rollback() {
+          echo "ОТКАТ на $PREV_SHA..." >&2
+          git checkout -q -B "$DEPLOY_BRANCH" "$PREV_SHA" || return 1
+          make reload-definitions || true
+          make health || true
+        }
+
+        echo "==> Реимпорт definitions"
+        if ! make reload-definitions; then
+          rollback || true
+          echo "Деплой провален, выполнен откат" >&2
+          exit 1
+        fi
+
+        echo "==> Проверка здоровья брокера"
+        if ! make health; then
+          rollback || true
+          echo "Деплой провален: брокер нездоров после реимпорта" >&2
+          exit 1
+        fi
+
+        echo "Деплой успешно завершён"
+        REMOTE
+        } > "$SSH_DIR/remote.sh"
+
         ssh -o BatchMode=yes -o IdentitiesOnly=yes \
-            -o UserKnownHostsFile="$RUNNER_TEMP/.ssh/known_hosts" \
-            -i "$RUNNER_TEMP/.ssh/deploy_key" \
-            "$DEPLOY_USER@$DEPLOY_HOST" \
-            "set -e; \
-             cd '$DEPLOY_DIR'; \
-             git fetch origin '$DEPLOY_BRANCH'; \
-             git checkout -q -B '$DEPLOY_BRANCH' origin/'$DEPLOY_BRANCH'; \
-             git reset --hard origin/'$DEPLOY_BRANCH'; \
-             make reload-definitions"
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$SSH_DIR/known_hosts" \
+            -i "$SSH_DIR/deploy_key" \
+            "$DEPLOY_USER@$DEPLOY_HOST" bash -s < "$SSH_DIR/remote.sh"
+
+    - name: Удалить ключ с runner
+      if: always()
+      shell: bash
+      run: |
+        SSH_DIR="$RUNNER_TEMP/.ssh/$GITHUB_RUN_ID-$GITHUB_JOB"
+        rm -f -- "$SSH_DIR/deploy_key" "$SSH_DIR/known_hosts" "$SSH_DIR/remote.sh"
+        rmdir -- "$SSH_DIR" 2>/dev/null || true

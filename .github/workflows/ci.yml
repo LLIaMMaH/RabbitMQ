@@ -55,6 +55,10 @@ jobs:
   deploy_dev:
     name: Deploy dev
     needs: validate
+    # Не отменять начатый реимпорт definitions на середине: только очередь.
+    concurrency:
+      group: rabbitmq-deploy-dev
+      cancel-in-progress: false
     if: >-
       (github.event_name == 'push' && github.ref == 'refs/heads/dev') ||
       (github.event_name == 'workflow_dispatch' && inputs.target == 'dev')
@@ -70,11 +74,16 @@ jobs:
           user: ${{ vars.DEPLOY_USER }}
           directory: ${{ vars.DEPLOY_DIR }}
           branch: dev
+          sha: ${{ github.sha }}
           key_b64: ${{ secrets.DEPLOY_KEY_B64 }}
+          known_hosts: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
 
   deploy_prod:
     name: Deploy prod
     needs: validate
+    concurrency:
+      group: rabbitmq-deploy-prod
+      cancel-in-progress: false
     if: >-
       (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
       (github.event_name == 'workflow_dispatch' && inputs.target == 'prod')
@@ -90,4 +99,6 @@ jobs:
           user: ${{ vars.DEPLOY_USER }}
           directory: ${{ vars.DEPLOY_DIR }}
           branch: main
+          sha: ${{ github.sha }}
           key_b64: ${{ secrets.DEPLOY_KEY_B64 }}
+          known_hosts: ${{ secrets.DEPLOY_KNOWN_HOSTS }}

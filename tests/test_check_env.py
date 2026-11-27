@@ -144,6 +144,24 @@ class SyncEnvTest(unittest.TestCase):
         self.assertEqual(stat.S_IMODE(backups[0].stat().st_mode), 0o600)
         self.assertIn("EXTRA=drop", backups[0].read_text(encoding="utf-8"))
 
+    def test_env_backups_are_rotated_and_private(self):
+        for index in range(11):
+            backup = self.dir / f".env-20260101-{index:06d}"
+            backup.write_text("old", encoding="utf-8")
+            backup.chmod(0o644)
+        extra = "\n".join(
+            f"{key}=secret_{key.lower()}" for key in reversed(VALID_KEYS)
+        ) + "\nEXTRA=drop\n"
+        env = self.write_env(extra, mode=0o644)
+
+        report = check_env.sync_env(env, self.template)
+
+        backups = sorted(self.backups())
+        self.assertEqual(len(backups), check_env.ENV_BACKUP_KEEP)
+        self.assertEqual(report["backup"], str(backups[-1]))
+        self.assertEqual(stat.S_IMODE(backups[-1].stat().st_mode), 0o600)
+        self.assertIn("EXTRA=drop", backups[-1].read_text(encoding="utf-8"))
+
     def test_mode_only_change_does_not_create_backup(self):
         env = self.write_env(valid_env_like_template(), mode=0o644)
         env.chmod(0o644)
@@ -197,6 +215,14 @@ class RenderDefinitionsTest(unittest.TestCase):
         for name, password in expected.items():
             with self.subTest(user=name):
                 self.assertEqual(actual[name], password)
+
+    def test_definitions_file_is_private(self):
+        env = self.write_env(valid_env_text())
+        output = self.dir / "definitions.json"
+
+        check_env.render_definitions(DEFINITIONS_TEMPLATE, output, env)
+
+        self.assertEqual(stat.S_IMODE(output.stat().st_mode), 0o600)
 
     def test_placeholder_is_rejected(self):
         env = self.write_env(valid_env_text(ADMIN="change_me"))
