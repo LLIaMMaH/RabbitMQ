@@ -5,11 +5,12 @@ on:
     branches: [main, dev]
   pull_request:
     branches: [main, dev]
-  # Ручной деплой: прод накатывается только по явному решению, без push в main.
+  # Автодеплой по push: dev → dev-стенд, main → прод.
+  # workflow_dispatch остаётся для ручного повторного деплоя без изменений в git.
   workflow_dispatch:
     inputs:
       target:
-        description: Стенд для ручного деплоя
+        description: Стенд для ручного повторного деплоя
         required: true
         default: prod
         type: choice
@@ -72,9 +73,11 @@ jobs:
           key_b64: ${{ secrets.DEPLOY_KEY_B64 }}
 
   deploy_prod:
-    name: Deploy prod (вручную)
+    name: Deploy prod
     needs: validate
-    if: github.event_name == 'workflow_dispatch' && inputs.target == 'prod'
+    if: >-
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_dispatch' && inputs.target == 'prod')
     runs-on: [self-hosted, linux, x64]
     timeout-minutes: 15
     steps:
