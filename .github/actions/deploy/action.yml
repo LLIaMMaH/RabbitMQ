@@ -1,0 +1,58 @@
+name: Deploy RabbitMQ на стенд
+description: Обновить рабочую копию на стенде и перезапустить RabbitMQ с реимпортом definitions
+
+# Аналог GitLab-шаблона .deploy: одна реализация на два стенда.
+# Вызывается из .github/workflows/ci.yml с разными host/directory/branch.
+
+inputs:
+  host:
+    description: IP или имя хоста стенда
+    required: true
+  user:
+    description: SSH-пользователь на стенде
+    required: true
+  directory:
+    description: Путь к рабочей копии репозитория на стенде
+    required: true
+  branch:
+    description: Ветка, на которую переключается стенд
+    required: true
+  key_b64:
+    description: Приватный SSH-ключ в base64 одной строкой
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Подготовить SSH-ключ и known_hosts
+      shell: bash
+      env:
+        DEPLOY_HOST: ${{ inputs.host }}
+        DEPLOY_KEY_B64: ${{ inputs.key_b64 }}
+      run: |
+        set -euo pipefail
+        install -m 700 -d "$RUNNER_TEMP/.ssh"
+        printf '%s' "$DEPLOY_KEY_B64" | base64 -d > "$RUNNER_TEMP/.ssh/deploy_key"
+        chmod 600 "$RUNNER_TEMP/.ssh/deploy_key"
+        # Ключ хоста фиксируем заранее: StrictHostKeyChecking остаётся включённым.
+        ssh-keyscan -H "$DEPLOY_HOST" > "$RUNNER_TEMP/.ssh/known_hosts"
+
+    - name: Обновить код и перезапустить брокера
+      shell: bash
+      env:
+        DEPLOY_HOST: ${{ inputs.host }}
+        DEPLOY_USER: ${{ inputs.user }}
+        DEPLOY_DIR: ${{ inputs.directory }}
+        DEPLOY_BRANCH: ${{ inputs.branch }}
+      run: |
+        set -euo pipefail
+        ssh -o BatchMode=yes -o IdentitiesOnly=yes \
+            -o UserKnownHostsFile="$RUNNER_TEMP/.ssh/known_hosts" \
+            -i "$RUNNER_TEMP/.ssh/deploy_key" \
+            "$DEPLOY_USER@$DEPLOY_HOST" \
+            "set -e; \
+             cd '$DEPLOY_DIR'; \
+             git fetch origin '$DEPLOY_BRANCH'; \
+             git checkout -q -B '$DEPLOY_BRANCH' origin/'$DEPLOY_BRANCH'; \
+             git reset --hard origin/'$DEPLOY_BRANCH'; \
+             make reload-definitions"
