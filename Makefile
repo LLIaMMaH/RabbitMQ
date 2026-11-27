@@ -69,6 +69,15 @@ ensure-cookie: init
 generate-config: ensure-cookie
 	@echo "Generating definitions.json from template"
 	@python3 scripts/check_env.py --subst rabbitmq/definitions.template.json rabbitmq/definitions.json
+	@# definitions.json монтируется в контейнер: владелец читает как 600, а
+	@# RabbitMQ внутри контейнера работает под uid/gid 999. Даём группе 999
+	@# read-only доступ, не открывая файл для остальных пользователей хоста.
+	@if [ "$$(id -u)" -eq 0 ]; then \
+		chgrp 999 rabbitmq/definitions.json; \
+	else \
+		sudo chgrp 999 rabbitmq/definitions.json; \
+	fi
+	@chmod 640 rabbitmq/definitions.json
 	@$(MAKE) --no-print-directory validate-json
 
 generate-cookie: init
