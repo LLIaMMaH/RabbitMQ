@@ -12,7 +12,9 @@
 или в .env лежит ``change_me``/``<...>``/пусто), файл НЕ перезаписывается,
 бэкап НЕ создаётся и права НЕ меняются. При успехе файл пишется через
 временный файл с заменой, перед записью создаётся бэкап
-.env-YYYYMMDD-HHMMSS, а сам .env и бэкап получают права 600.
+.env-YYYYMMDD-HHMMSS, а сам .env и бэкап получают права 600. Старые бэкапы
+ротируются: остаётся только ENV_BACKUP_KEEP последних. Сгенерированный
+definitions.json тоже создаётся сразу с правами 600: он содержит пароли.
 
 Значения читаются обычным парсером, а не ``. ./.env``: пароли с ``$``, ``!``,
 пробелами и кавычками не исполняются shell и не теряются.
@@ -60,6 +62,9 @@ _PLACEHOLDER_BRACKETED_RE = re.compile(r"^<[^=]*>$")
 # Точные значения-заглушки, использующиеся в .env.template этого проекта.
 _PLACEHOLDER_EXACT = {"change_me"}
 
+# Сколько бэкапов .env-<timestamp> держать рядом с основным файлом.
+ENV_BACKUP_KEEP = 10
+
 
 def _read_lines(path: Path) -> list[str]:
     return path.read_text(encoding="utf-8").splitlines()
@@ -105,6 +110,32 @@ def _unquote_value(raw: str) -> str:
             return inner
         return inner.replace('\\"', '"').replace("\\\\", "\\")
     return value
+
+
+def _write_private(path: Path, content: str) -> None:
+    """Создать файл сразу с правами 600 — без окна, когда он доступен всем."""
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    try:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            fd = -1
+            handle.write(content)
+    finally:
+        if fd != -1:
+            os.close(fd)
+
+
+def _rotate_env_backups(env_path: Path, keep: int = ENV_BACKUP_KEEP) -> None:
+    """Оставить только последние ``keep`` бэкапов вида .env-YYYYMMDD-HHMMSS."""
+    pattern = re.compile(re.escape(env_path.name) + r"-\d{8}-\d{6}$")
+    backups = [
+        path
+        for path in env_path.parent.iterdir()
+        if pattern.match(path.name) and path.is_file()
+    ]
+    backups.sort(key=lambda path: path.name, reverse=True)
+    for old in backups[keep:]:
+        old.unlink()
 
 
 def parse_env_values(env_path: Path) -> dict[str, str]:
@@ -185,7 +216,7 @@ def render_definitions(
     except json.JSONDecodeError as exc:
         raise RuntimeError(f"Сгенерированный JSON некорректен: {exc}") from exc
 
-    output_path.write_text(proc.stdout, encoding="utf-8")
+    _write_private(output_path, proc.stdout)
 
 
 def sync_env(
@@ -272,8 +303,8 @@ def sync_env(
     if backup and new_content != old_content:
         timestamp = backup_suffix or datetime.now().strftime("%Y%m%d-%H%M%S")
         backup_path = Path(str(env_path) + "-" + timestamp)
-        backup_path.write_text(old_content, encoding="utf-8")
-        os.chmod(backup_path, 0o600)
+        _write_private(backup_path, old_content)
+        _rotate_env_backups(env_path)
 
     if new_content != old_content:
         tmp_path: Path | None = None
