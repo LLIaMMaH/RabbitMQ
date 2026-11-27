@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate configuration
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install envsubst
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends gettext-base
+
+      - name: Validate definitions JSON
+        run: make validate-json
+
+      - name: Validate docker compose
+        # CI не хранит реальный cookie: compose требует лишь непустое значение.
+        run: RABBITMQ_ERLANG_COOKIE=ci-placeholder-cookie docker compose config -q
+
+      - name: Run unit tests
+        run: make test

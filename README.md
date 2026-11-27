@@ -21,7 +21,6 @@
 ## 📖 Содержание
 
 - [Архитектура](#-архитектура)
-- [Структура репозитория](#-структура-репозитория)
 - [Как это работает](#-как-это-работает)
 - [Dead-letter маршрутизация](#-dead-letter-маршрутизация)
 - [Быстрый старт](#-быстрый-старт)
@@ -49,26 +48,6 @@
 
 ❗ Никаких `rabbitmqctl` из других контейнеров
 ❗ Никакой runtime-магии после старта брокера
-
----
-
-## 📂 Структура репозитория
-
-```
-.
-├── docker-compose.yml
-├── Makefile
-├── .env.template
-├── data/                # volume RabbitMQ (persistent)
-├── logs/                # логи RabbitMQ
-├── backups/             # экспорт definitions (последние 10, не в git)
-├── scripts/
-│   └── check_env.py     # сверка .env с .env.template (make check-env)
-└── rabbitmq/
-    ├── rabbitmq.conf
-    ├── definitions.template.json
-    └── definitions.json   # генерируется, НЕ коммитится
-```
 
 ---
 
@@ -110,7 +89,7 @@ routing key, а `dlx` был связан с `dlq` только с пустым 
 `make reload-definitions`. Старый биндинг с пустым ключом, если он остался на
 рабочем брокере, безвреден.
 
-Per-server сущности JDILib (`mc.dlx.<id>`, `mc.server.<id>` и др.) под политики
+Динамические per-server сущности (`mc.dlx.<id>`, `mc.server.<id>` и др.) под политики
 не попадают: шаблоны политик ограничены точными именами статических очередей,
 у мода свой DLX и своя DLQ.
 
@@ -172,8 +151,17 @@ make up              # сгенерировать cookie и конфиг, про
 |---------|----------|
 | `make check-env` | Транзакционная сверка `.env` с `.env.template`: при `change_me`/`<...>`/пустом значении файл не трогается; при успехе — бэкап и права `600` |
 | `make validate-json` | Валидация JSON-файлов (вызывается автоматически при `make up`) |
+| `make test` | Юнит-тесты `check_env.py` и инварианта прав (stdlib `unittest`) |
 | `make backup-definitions` | Экспорт определений в `backups/`; хранятся последние 10 копий |
 | `make generate-config` | Сгенерировать `definitions.json` из шаблона и проверить JSON |
+
+### CI
+
+GitHub Actions (`.github/workflows/ci.yml`) запускается на push в `main`/`dev` и на PR в эти ветки. Проверяет:
+
+- `make validate-json` — корректность JSON;
+- `docker compose config -q` — корректность compose (cookie подставляется заглушкой, реальный секрет в CI не нужен);
+- `make test` — тесты `check_env.py` и отдельная проверка инварианта прав: для прикладных пользователей regex должны быть префиксными (`mc.dlx.3` матчится, `mc.dlxX` — нет), а `\.*` вместо `\..*` запрещён. Исключения — `admin`, `monitoring` и `zabbix_monitor`.
 
 ---
 
