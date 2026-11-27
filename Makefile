@@ -144,7 +144,7 @@ status:
 
 health:
 	@echo "Checking RabbitMQ health..."
-	@docker exec rabbitmq sh -c 'rabbitmq-diagnostics -q check_running && rabbitmq-diagnostics -q check_port_connectivity' || { echo "RabbitMQ is not healthy" >&2; exit 1; }
+	@docker exec rabbitmq gosu rabbitmq sh -c 'rabbitmq-diagnostics -q check_running && rabbitmq-diagnostics -q check_port_connectivity' || { echo "RabbitMQ is not healthy" >&2; exit 1; }
 
 shell:
 	docker exec -it rabbitmq bash
@@ -165,7 +165,7 @@ endif
 backup-definitions:
 	@echo "Exporting current definitions to backup..."
 	@mkdir -p backups
-	@docker exec rabbitmq rabbitmqctl export_definitions /tmp/definitions_backup.json 2>/dev/null || \
+	@docker exec rabbitmq gosu rabbitmq rabbitmqctl export_definitions /tmp/definitions_backup.json 2>/dev/null || \
 		(echo "Note: export_definitions requires rabbitmq_management plugin" && exit 1)
 	@docker cp rabbitmq:/tmp/definitions_backup.json backups/definitions-$$(date +%Y%m%d-%H%M%S).json
 	@docker exec rabbitmq rm -f /tmp/definitions_backup.json
@@ -189,6 +189,6 @@ test:
 
 test-connection:
 	@echo "Testing AMQP connection to RabbitMQ..."
-	@docker exec rabbitmq rabbitmq-diagnostics -q check_port_connectivity || \
+	@docker exec rabbitmq gosu rabbitmq rabbitmq-diagnostics -q check_port_connectivity || \
 		(echo "✗ Cannot connect to RabbitMQ on port 5672" && exit 1)
 	@echo "✓ Successfully connected to RabbitMQ"
