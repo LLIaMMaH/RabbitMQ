@@ -1,4 +1,4 @@
-.PHONY: help init check-env ensure-cookie generate-config generate-cookie up down restart reload-definitions clean wipe logs status health shell plugins enable-plugin backup-definitions validate-json test-connection start stop
+.PHONY: help init check-env ensure-cookie generate-config generate-cookie up down restart reload-definitions clean wipe logs status health shell plugins enable-plugin backup-definitions validate-json test test-connection start stop
 
 BACKUP_KEEP := 10
 
@@ -30,6 +30,7 @@ help:
 	@echo "  make validate-json    - Validate definitions.json syntax"
 	@echo "  make test-connection  - Test AMQP connection to RabbitMQ"
 	@echo "  make backup-definitions - Export definitions to backups/ (keep last 10)"
+	@echo "  make test             - Run unit tests (check_env + permissions invariant)"
 	@echo ""
 	@echo "Dangerous:"
 	@echo "  make wipe             - REMOVE local data/logs directories"
@@ -181,6 +182,10 @@ validate-json:
 		echo "✓ definitions.json is valid JSON" || \
 		(echo "✗ Invalid JSON in definitions.json" && exit 1); \
 	fi
+
+test:
+	@echo "Running unit tests..."
+	@python3 -m unittest discover -s tests -v
 
 test-connection:
 	@echo "Testing AMQP connection to RabbitMQ..."
