@@ -51,40 +51,40 @@ jobs:
 # Порядок установки runner и подготовка ключа описаны в локальном GUIDE-*.md.
 # Адреса, пользователь и путь берутся из repository Variables.
 
-deploy_dev:
-  name: Deploy dev
-  needs: validate
-  if: >-
-    (github.event_name == 'push' && github.ref == 'refs/heads/dev') ||
-    (github.event_name == 'workflow_dispatch' && inputs.target == 'dev')
-  runs-on: [self-hosted, linux, x64]
-  timeout-minutes: 15
-  steps:
-    - name: Checkout (для локального composite-actions)
-      uses: actions/checkout@v4
-    - name: Обновить стенд dev и перезапустить сервис
-      uses: ./.github/actions/deploy
-      with:
-        host: ${{ vars.DEV_HOST }}
-        user: ${{ vars.DEPLOY_USER }}
-        directory: ${{ vars.DEPLOY_DIR }}
-        branch: dev
-        key_b64: ${{ secrets.DEPLOY_KEY_B64 }}
+  deploy_dev:
+    name: Deploy dev
+    needs: validate
+    if: >-
+      (github.event_name == 'push' && github.ref == 'refs/heads/dev') ||
+      (github.event_name == 'workflow_dispatch' && inputs.target == 'dev')
+    runs-on: [self-hosted, linux, x64]
+    timeout-minutes: 15
+    steps:
+      - name: Checkout (для локального composite-actions)
+        uses: actions/checkout@v4
+      - name: Обновить стенд dev и перезапустить сервис
+        uses: ./.github/actions/deploy
+        with:
+          host: ${{ vars.DEV_HOST }}
+          user: ${{ vars.DEPLOY_USER }}
+          directory: ${{ vars.DEPLOY_DIR }}
+          branch: dev
+          key_b64: ${{ secrets.DEPLOY_KEY_B64 }}
 
-deploy_prod:
-  name: Deploy prod (вручную)
-  needs: validate
-  if: github.event_name == 'workflow_dispatch' && inputs.target == 'prod'
-  runs-on: [self-hosted, linux, x64]
-  timeout-minutes: 15
-  steps:
-    - name: Checkout (для локального composite-actions)
-      uses: actions/checkout@v4
-    - name: Обновить стенд prod и перезапустить сервис
-      uses: ./.github/actions/deploy
-      with:
-        host: ${{ vars.PROD_HOST }}
-        user: ${{ vars.DEPLOY_USER }}
-        directory: ${{ vars.DEPLOY_DIR }}
-        branch: main
-        key_b64: ${{ secrets.DEPLOY_KEY_B64 }}
+  deploy_prod:
+    name: Deploy prod (вручную)
+    needs: validate
+    if: github.event_name == 'workflow_dispatch' && inputs.target == 'prod'
+    runs-on: [self-hosted, linux, x64]
+    timeout-minutes: 15
+    steps:
+      - name: Checkout (для локального composite-actions)
+        uses: actions/checkout@v4
+      - name: Обновить стенд prod и перезапустить сервис
+        uses: ./.github/actions/deploy
+        with:
+          host: ${{ vars.PROD_HOST }}
+          user: ${{ vars.DEPLOY_USER }}
+          directory: ${{ vars.DEPLOY_DIR }}
+          branch: main
+          key_b64: ${{ secrets.DEPLOY_KEY_B64 }}
