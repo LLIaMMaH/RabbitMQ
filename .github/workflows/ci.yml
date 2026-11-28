@@ -21,21 +21,57 @@ on:
 permissions:
   contents: read
 
+# Экшены зафиксированы по commitment SHA: теги можно переставить, SHA — нет.
+# Комментарий рядом — человекочитаемая версия, для обновления менять обе части.
+# Оба экшена работают на Node.js 24, поэтому предупреждение про Node.js 20 ушло.
+
 jobs:
   validate:
     name: Validate configuration
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.11'
 
       - name: Install envsubst
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends gettext-base
+
+      - name: Generate definitions.json from template
+        # CI не хранит реальные пароли: подставляем фиктивные значения через
+        # тот же путь, что и на стенде (check_env.py + envsubst + make).
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          lines = []
+          for line in Path(".env.template").read_text(encoding="utf-8").splitlines():
+              match = re.match(r"^([A-Z0-9_]+)=", line)
+              if match:
+                  lines.append(f"{match.group(1)}=ci_test_{match.group(1).lower()}")
+              elif line.strip() and not line.startswith("#"):
+                  lines.append(line)
+          Path(".env").write_text("\n".join(lines) + "\n", encoding="utf-8")
+          PY
+          make generate-config
+          python3 - <<'PY'
+          import re
+          import stat
+          from pathlib import Path
+
+          path = Path("rabbitmq/definitions.json")
+          text = path.read_text(encoding="utf-8")
+          unresolved = re.findall(r"\$[A-Z][A-Z0-9_]*", text)
+          assert not unresolved, f"неподставленные переменные: {sorted(set(unresolved))}"
+          mode = stat.S_IMODE(path.stat().st_mode)
+          assert mode == 0o640, f"права definitions.json: {mode:o}, ожидалось 640"
+          print("definitions.json: сгенерирован, переменных нет, права 640")
+          PY
 
       - name: Validate definitions JSON
         run: make validate-json
@@ -49,7 +85,7 @@ jobs:
 
 # 🚀 Переиспользуемый шаг деплоя лежит в .github/actions/deploy.
 # Self-hosted runner обязателен: облачный runner не видит внутреннюю сеть.
-# Порядок установки runner и подготовка ключа описаны в локальном GUIDE-*.md.
+# Порядок установки runner и подготовка ключа описаны в docs/GITHUB-DEPLOY.md.
 # Адреса, пользователь и путь берутся из repository Variables.
 
   deploy_dev:
@@ -66,7 +102,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout (для локального composite-actions)
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Обновить стенд dev и перезапустить сервис
         uses: ./.github/actions/deploy
         with:
@@ -91,7 +127,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout (для локального composite-actions)
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Обновить стенд prod и перезапустить сервис
         uses: ./.github/actions/deploy
         with:

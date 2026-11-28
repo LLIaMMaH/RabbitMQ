@@ -1,0 +1,4 @@
+% Декларативный список плагинов: редактируйте этот файл, а не включайте
+% плагины командой rabbitmq-plugins enable на работающем контейнере.
+% rabbitmq_federation включается неявно как зависимость rabbitmq_prometheus.
+[rabbitmq_management,rabbitmq_prometheus].

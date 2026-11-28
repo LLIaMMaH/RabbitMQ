@@ -78,6 +78,7 @@ runs:
         command -v make >/dev/null || { echo "make не найден" >&2; exit 1; }
         command -v docker >/dev/null || { echo "docker не найден" >&2; exit 1; }
         docker compose version >/dev/null 2>&1 || { echo "docker compose недоступен" >&2; exit 1; }
+        command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null || { echo "sudo без пароля недоступен на стенде" >&2; exit 1; }
 
         echo "==> Фиксируем код на коммите $DEPLOY_SHA"
         git fetch origin "$DEPLOY_BRANCH"

@@ -22,7 +22,7 @@ help:
 	@echo "  make health           - Check RabbitMQ health status"
 	@echo "  make shell            - Open shell inside RabbitMQ container"
 	@echo "  make plugins          - List all available plugins"
-	@echo "  make enable-plugin    - Enable a specific plugin (NAME=<plugin>)"
+	@echo "  make enable-plugin    - Проверить описание плагина в rabbitmq/enabled_plugins (NAME=<plugin>)"
 	@echo ""
 	@echo "Validation & Backup:"
 	@echo "  make check-env        - Sync .env with .env.template (cookie auto-generated)"
@@ -72,10 +72,16 @@ generate-config: ensure-cookie
 	@# definitions.json монтируется в контейнер: владелец читает как 600, а
 	@# RabbitMQ внутри контейнера работает под uid/gid 999. Даём группе 999
 	@# read-only доступ, не открывая файл для остальных пользователей хоста.
-	@if [ "$$(id -u)" -eq 0 ]; then \
-		chgrp 999 rabbitmq/definitions.json; \
+	@if getent group 999 >/dev/null 2>&1; then \
+		if [ "$$(id -u)" -eq 0 ]; then \
+			chgrp 999 rabbitmq/definitions.json; \
+		elif command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then \
+			sudo chgrp 999 rabbitmq/definitions.json; \
+		else \
+			echo "ВНИМАНИЕ: sudo без пароля недоступен — chgrp пропущен" >&2; \
+		fi; \
 	else \
-		sudo chgrp 999 rabbitmq/definitions.json; \
+		echo "Группа 999 не найдена: chgrp пропущен, файл останется в текущей группе" >&2; \
 	fi
 	@chmod 640 rabbitmq/definitions.json
 	@$(MAKE) --no-print-directory validate-json
@@ -165,8 +171,13 @@ enable-plugin:
 ifndef NAME
 	$(error NAME is required. Usage: make enable-plugin NAME=<plugin_name>)
 endif
-	docker exec rabbitmq rabbitmq-plugins enable $(NAME)
-	@echo "Plugin '$(NAME)' enabled. Restart may be required."
+	@# Рантайм-enable теряется при пересоздании контейнера: плагины описаны
+	@# в rabbitmq/enabled_plugins и монтируются в контейнер.
+	@grep -q -- "$(NAME)" rabbitmq/enabled_plugins || { \
+		echo "Плагин $(NAME) не описан в rabbitmq/enabled_plugins" >&2; \
+		exit 1; \
+	}
+	@echo "Плагин $(NAME) описан декларативно; примените: make reload-definitions"
 
 # -----------------------------
 # Backup & Validation
