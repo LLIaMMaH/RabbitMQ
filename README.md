@@ -25,6 +25,7 @@
 - [Dead-letter маршрутизация](#-dead-letter-маршрутизация)
 - [Быстрый старт](#-быстрый-старт)
 - [Makefile](#-makefile)
+- [Деплой через GitHub Actions](#-деплой-через-github-actions)
 - [Безопасность](#-безопасность)
 - [Очистка и сброс данных](#-очистка-и-сброс-данных)
 
@@ -34,9 +35,9 @@
 
 - **RabbitMQ 3.13.7 + Management Plugin**, образ зафиксирован по digest
   (`3.13.7-management@sha256:e582c0b…`)
-- Плагины не включаются рантайм-командой: стандартный management уже в образе,
-  shovel-плагины убраны (shovels в definitions нет). При необходимости — через
-  смонтированный `rabbitmq/enabled_plugins`
+- Плагины описаны декларативно в `rabbitmq/enabled_plugins` и монтируются в
+  контейнер; `rabbitmq-plugins enable` после старта запрещён — такая правка не
+  переживёт пересоздание контейнера
 - Лимиты контейнера: `mem_limit: 1G`, `memswap_limit: 2G`, `cpus: "2.0"`
 - Конфигурация загружается **декларативно при старте**:
   - пользователи
@@ -142,7 +143,7 @@ make up              # сгенерировать cookie и конфиг, про
 | `make health` | `check_running` + `check_port_connectivity`; при ошибке — ненулевой код возврата |
 | `make shell` | Войти в контейнер (bash) |
 | `make plugins` | Список доступных плагинов |
-| `make enable-plugin NAME=<plugin>` | Включить плагин |
+| `make enable-plugin NAME=<plugin>` | Проверить описание плагина в `rabbitmq/enabled_plugins` (рантайм-enable запрещён) |
 | `make test-connection` | Проверка подключения к порту 5672 |
 
 ### Валидация и бэкапы
@@ -160,8 +161,16 @@ make up              # сгенерировать cookie и конфиг, про
 GitHub Actions (`.github/workflows/ci.yml`) запускается на push в `main`/`dev` и на PR в эти ветки. Проверяет:
 
 - `make validate-json` — корректность JSON;
+- `make generate-config` — генерация definitions из шаблона с тестовыми значениями, проверка отсутствия неподставленных переменных и прав `640`;
 - `docker compose config -q` — корректность compose (cookie подставляется заглушкой, реальный секрет в CI не нужен);
-- `make test` — тесты `check_env.py` и отдельная проверка инварианта прав: для прикладных пользователей regex должны быть префиксными (`mc.dlx.3` матчится, `mc.dlxX` — нет), а `\.*` вместо `\..*` запрещён. Исключения — `admin`, `monitoring` и `zabbix_monitor`.
+- `make test` — тесты `check_env.py`, декларативного списка плагинов и инварианта прав: для прикладных пользователей regex должны быть префиксными (`mc.dlx.3` матчится, `mc.dlxX` — нет), а `\.*` вместо `\..*` запрещён. Исключения — `admin`, `monitoring` и `zabbix_monitor`;
+- экшены зафиксированы по commitment SHA и работают на Node.js 24.
+
+## 🚀 Деплой через GitHub Actions
+
+Инструкция по self-hosted runner, Variables/Secrets, отпечаткам хостов, деплою
+по конкретному SHA и откату при провале health-проверки —
+в [docs/GITHUB-DEPLOY.md](docs/GITHUB-DEPLOY.md).
 
 ---
 
@@ -169,7 +178,9 @@ GitHub Actions (`.github/workflows/ci.yml`) запускается на push в 
 
 - `.env` **не коммитится**; `make check-env` поддерживает права `600` на него
 - Пароли не хранятся в `definitions.json` в репозитории
-- `definitions.json` генерируется локально
+- `definitions.json` генерируется локально с правами `640`: владелец может
+  перезаписывать файл, группа контейнера — читать, остальные пользователи хоста
+  доступа не имеют
 - `RABBITMQ_ERLANG_COOKIE` генерируется локально; compose не запустится без него
 - `backups/` не коммитится (экспорт definitions содержит метаданные брокера)
 - Management API не используется для инициализации
