@@ -1,4 +1,4 @@
-.PHONY: help init check-env ensure-cookie generate-config generate-cookie up down restart reload-definitions clean wipe logs status health shell plugins enable-plugin backup-definitions validate-json test test-connection start stop
+.PHONY: help init check-env ensure-cookie generate-config generate-cookie up down restart reload-definitions clean wipe logs status health shell plugins enable-plugin backup-definitions validate-json test test-connection release-preview start stop
 
 BACKUP_KEEP := 10
 
@@ -6,6 +6,10 @@ BACKUP_KEEP := 10
 RABBITMQ_HOST ?= localhost
 RABBITMQ_PORT ?= 5672
 AMQP_TIMEOUT ?= 5
+
+# Предпросмотр релиза: те же параметры, что у workflow_dispatch.
+BUMP ?= auto
+VERSION ?=
 
 # -----------------------------
 # Help
@@ -36,6 +40,7 @@ help:
 	@echo "  make test-connection  - AMQP smoke с хоста (RABBITMQ_HOST/PORT, AMQP_TIMEOUT)"
 	@echo "  make backup-definitions - Export definitions to backups/ (keep last 10)"
 	@echo "  make test             - Run unit tests (check_env + permissions invariant)"
+	@echo "  make release-preview  - Показать версию и коммиты будущего релиза (BUMP/VERSION)"
 	@echo ""
 	@echo "Dangerous:"
 	@echo "  make wipe             - REMOVE local data/logs directories"
@@ -215,3 +220,7 @@ test:
 test-connection:
 	@echo "AMQP smoke: $(RABBITMQ_HOST):$(RABBITMQ_PORT) со стороны хоста..."
 	@python3 scripts/smoke_amqp.py "$(RABBITMQ_HOST)" "$(RABBITMQ_PORT)" --timeout "$(AMQP_TIMEOUT)"
+
+release-preview:
+	@# Только чтение git: тег не создаётся и GitHub не дёргается.
+	@python3 scripts/release_version.py --bump "$(BUMP)" $(if $(VERSION),--version "$(VERSION)",)
