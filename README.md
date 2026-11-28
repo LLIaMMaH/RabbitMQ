@@ -62,11 +62,13 @@
    - передаёт значения в `envsubst` с явным списком переменных;
    - проверяет результат как JSON и генерирует `definitions.json`
 4. RabbitMQ при старте:
-   - читает `rabbitmq.conf`
+   - читает `rabbitmq.conf` и `enabled_plugins`
    - загружает `definitions.json`
-   - создаёт пользователей, vhost'ы, очереди, биндинги и политики
+   - создаёт/обновляет пользователей, vhost'ы, очереди, биндинги и политики
 
-📌 Всё происходит **один раз при старте**, без ожиданий и race-condition'ов.
+📌 Definitions импортируются **при каждом старте контейнера**: после правок
+   топологии используйте `make reload-definitions` (`down` + `up`). Обычный
+   `make restart` конфигурацию не перечитает.
 
 ---
 
@@ -144,7 +146,7 @@ make up              # сгенерировать cookie и конфиг, про
 | `make shell` | Войти в контейнер (bash) |
 | `make plugins` | Список доступных плагинов |
 | `make enable-plugin NAME=<plugin>` | Проверить описание плагина в `rabbitmq/enabled_plugins` (рантайм-enable запрещён) |
-| `make test-connection` | Проверка подключения к порту 5672 |
+| `make test-connection` | AMQP smoke с хоста: TCP + Connection.Start на `RABBITMQ_HOST:5672` (не изнутри контейнера) |
 
 ### Валидация и бэкапы
 
@@ -164,13 +166,34 @@ GitHub Actions (`.github/workflows/ci.yml`) запускается на push в 
 - `make generate-config` — генерация definitions из шаблона с тестовыми значениями, проверка отсутствия неподставленных переменных и прав `640`;
 - `docker compose config -q` — корректность compose (cookie подставляется заглушкой, реальный секрет в CI не нужен);
 - `make test` — тесты `check_env.py`, декларативного списка плагинов и инварианта прав: для прикладных пользователей regex должны быть префиксными (`mc.dlx.3` матчится, `mc.dlxX` — нет), а `\.*` вместо `\..*` запрещён. Исключения — `admin`, `monitoring` и `zabbix_monitor`;
+- тесты гонятся на Python 3.11 и 3.14 (матрица): локальная версия не должна
+  расходиться с CI;
 - экшены зафиксированы по commitment SHA и работают на Node.js 24.
 
 ## 🚀 Деплой через GitHub Actions
 
-Инструкция по self-hosted runner, Variables/Secrets, отпечаткам хостов, деплою
-по конкретному SHA и откату при провале health-проверки —
-в [docs/GITHUB-DEPLOY.md](docs/GITHUB-DEPLOY.md).
+Деплой выполняется с self-hosted runner по SSH. Полная пошаговая инструкция —
+в [docs/GITHUB-DEPLOY.md](docs/GITHUB-DEPLOY.md); essentials ниже.
+
+### Variables и Secrets
+
+| Имя | Тип | Назначение |
+|---|---|---|
+| `DEV_HOST`, `PROD_HOST` | Variables | Адреса стендов, куда подключается runner |
+| `DEPLOY_USER`, `DEPLOY_DIR` | Variables | Пользователь SSH и каталог рабочей копии на стенде |
+| `DEPLOY_KEY_B64` | Secret | Приватный deploy-ключ в base64 (только для CI) |
+| `DEPLOY_KNOWN_HOSTS` | Secret | Отпечатки хостов сразу для dev и prod; `StrictHostKeyChecking=yes` |
+
+### Автодеплой и откат
+
+- `push` в `dev` → `Deploy dev`; `push` в `main` → `Deploy prod`;
+- `pull_request` → только проверки, деплой пропускается;
+- `workflow_dispatch` → ручной повтор деплоя без изменений в git;
+- `concurrency` с `cancel-in-progress: false` ставит повторы в очередь;
+- на стенд кладётся конкретный `github.sha`, а не текущий head ветки;
+- после `reload-definitions` ждётся здоровье брокера (до 90 секунд) и AMQP
+  smoke на внешнем порту; при провале — откат на предыдущий коммит, повторный
+  реимпорт и health-проверка.
 
 ---
 

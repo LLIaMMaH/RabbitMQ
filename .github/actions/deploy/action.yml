@@ -131,6 +131,14 @@ runs:
           exit 1
         fi
 
+        echo "==> Smoke-проверка AMQP с хоста"
+        echo "    (внешний порт 127.0.0.1:5672, а не диагностика внутри контейнера)"
+        if ! make test-connection RABBITMQ_HOST=127.0.0.1 RABBITMQ_PORT=5672 AMQP_TIMEOUT=10; then
+          rollback || true
+          echo "Деплой провален: AMQP недоступен на внешнем порту после деплоя" >&2
+          exit 1
+        fi
+
         echo "Деплой успешно завершён"
         REMOTE
         } > "$SSH_DIR/remote.sh"
