@@ -2,6 +2,11 @@
 
 BACKUP_KEEP := 10
 
+# Smoke-проверка идёт с хоста, на котором запущен make, а не из контейнера.
+RABBITMQ_HOST ?= localhost
+RABBITMQ_PORT ?= 5672
+AMQP_TIMEOUT ?= 5
+
 # -----------------------------
 # Help
 # -----------------------------
@@ -28,7 +33,7 @@ help:
 	@echo "  make check-env        - Sync .env with .env.template (cookie auto-generated)"
 	@echo "  make generate-cookie  - Rotate Erlang cookie (auto on first up if empty)"
 	@echo "  make validate-json    - Validate definitions.json syntax"
-	@echo "  make test-connection  - Test AMQP connection to RabbitMQ"
+	@echo "  make test-connection  - AMQP smoke с хоста (RABBITMQ_HOST/PORT, AMQP_TIMEOUT)"
 	@echo "  make backup-definitions - Export definitions to backups/ (keep last 10)"
 	@echo "  make test             - Run unit tests (check_env + permissions invariant)"
 	@echo ""
@@ -208,7 +213,5 @@ test:
 	@python3 -m unittest discover -s tests -v
 
 test-connection:
-	@echo "Testing AMQP connection to RabbitMQ..."
-	@docker exec rabbitmq gosu rabbitmq rabbitmq-diagnostics -q check_port_connectivity || \
-		(echo "✗ Cannot connect to RabbitMQ on port 5672" && exit 1)
-	@echo "✓ Successfully connected to RabbitMQ"
+	@echo "AMQP smoke: $(RABBITMQ_HOST):$(RABBITMQ_PORT) со стороны хоста..."
+	@python3 scripts/smoke_amqp.py "$(RABBITMQ_HOST)" "$(RABBITMQ_PORT)" --timeout "$(AMQP_TIMEOUT)"
