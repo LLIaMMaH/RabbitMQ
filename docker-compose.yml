@@ -7,9 +7,9 @@ services:
     hostname: rabbitmq
     restart: unless-stopped
 
-    # Никаких rabbitmq-plugins enable при старте: стандартный management уже
-    # включён в образе, а shovels в definitions нет. Если появятся — описать
-    # декларативно через смонтированный rabbitmq/enabled_plugins.
+    # Плагины описаны декларативно в rabbitmq/enabled_plugins и монтируются
+    # ниже: rabbitmq-plugins enable после старта ничего не сохранит.
+    # rabbitmq_federation подтягивается как зависимость rabbitmq_prometheus.
 
     ports:
       # AMQP для локальной сети (доступ из других контейнеров)
@@ -25,6 +25,7 @@ services:
       - ./data:/var/lib/rabbitmq
       - ./logs:/var/log/rabbitmq
       - ./rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+      - ./rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins:ro
       - ./rabbitmq/definitions.json:/etc/rabbitmq/definitions.json:ro
 
     networks:
