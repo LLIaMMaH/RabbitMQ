@@ -1,0 +1,103 @@
+name: Release
+
+# Подготовка релиза — только по кнопке, только с main. Создание тега не
+# триггерит ci.yml (там фильтр по веткам main/dev), поэтому повторного
+# деплоя на прод не происходит.
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Тип бампа; auto смотрит коммиты после последнего тега
+        required: true
+        default: auto
+        type: choice
+        options:
+          - auto
+          - patch
+          - minor
+          - major
+      version:
+        description: Явная версия (vX.Y или vX.Y.Z), перекрывает bump
+        required: false
+        type: string
+      draft:
+        description: Сначала создать черновик и проверить notes
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Prepare release
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      BUMP_INPUT: ${{ inputs.bump }}
+      VERSION_INPUT: ${{ inputs.version }}
+      DRAFT_INPUT: ${{ inputs.draft }}
+    steps:
+      - name: Checkout (вся история и теги)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.11'
+
+      - name: Рассчитать версию
+        id: version
+        run: |
+          args=(--bump "$BUMP_INPUT" --output "$GITHUB_OUTPUT")
+          if [ -n "$VERSION_INPUT" ]; then
+            args+=(--version "$VERSION_INPUT")
+          fi
+          python3 scripts/release_version.py "${args[@]}"
+
+      - name: Проверить проверки коммита
+        run: |
+          conclusions=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/check-runs" \
+            --jq '[.check_runs[] | select(.name != "Prepare release") | .conclusion] | unique | join(",")')
+          echo "check-runs: ${conclusions:-(нет)}"
+          if printf '%s' "$conclusions" | grep -Eq '(^|,)(failure|cancelled|timed_out|action_required)(,|$)'; then
+            echo "Проверки коммита $GITHUB_SHA не зелёные — релиз не создаём." >&2
+            exit 1
+          fi
+
+      - name: Создать GitHub Release
+        env:
+          RELEASE_TAG: ${{ steps.version.outputs.version }}
+        run: |
+          flags=(--target "$GITHUB_SHA" --title "$RELEASE_TAG" --generate-notes)
+          if [ "$DRAFT_INPUT" = "true" ]; then
+            flags+=(--draft)
+          fi
+          gh release create "$RELEASE_TAG" "${flags[@]}"
+
+      - name: Итог
+        env:
+          RELEASE_TAG: ${{ steps.version.outputs.version }}
+          PREV_TAG: ${{ steps.version.outputs.previous_tag }}
+          COMMIT_COUNT: ${{ steps.version.outputs.commit_count }}
+        run: |
+          {
+            echo "### Релиз $RELEASE_TAG"
+            echo
+            echo "- Коммит: \`$GITHUB_SHA\`"
+            echo "- Предыдущий тег: ${PREV_TAG:-(нет)}"
+            echo "- Новых коммитов: $COMMIT_COUNT"
+            echo "- Ссылка: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/tag/$RELEASE_TAG"
+            if [ "$DRAFT_INPUT" = "true" ]; then
+              echo "- Статус: **черновик** — сверьте автоматические notes и опубликуйте вручную."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
